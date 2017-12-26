@@ -499,7 +499,7 @@ def fastq_screen(exp):
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
-                        'fastq_screen --Bowtie2 ' + exp.fastq['Folder'] + sample + '_R1.fastq.gz'
+                        'fastq_screen --aligner bowtie2 ' + exp.fastq['Folder'] + sample + '_R1.fastq.gz'
                        ]
 
         exp.job_id.append(send_job(command_list=command_list, 
