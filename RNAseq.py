@@ -68,7 +68,7 @@ def parse_yaml():
     exp.out_dir = yml['Output_directory']
     
     #Log file
-    exp.log_file = exp.job_folder + exp.name + exp.date + '.out'
+    exp.log_file = exp.job_folder + exp.name + "-" + exp.date + '.out'
     
     print('Pipeline version ' + str(version) + ' run on ' + datetime.datetime.today().strftime('%Y-%m-%d') + '\n', file=open(exp.log_file, 'w'))
     print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
