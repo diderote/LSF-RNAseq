@@ -2,8 +2,8 @@ Name: 'Experiment_Name' #Experiment name
 Rundate: '2017-10-31' #Run Date
 Genome: hg38 #or mm10
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Enter output directory here eg. .../Results"
+ERCC_spike: yes # yes if ERCC spike-ins used.  Will normalized based on spike-in instead of DESeq2
 Total_sample_number: 12 #Total number
-Spike: no # Yes if ERCC spike-ins used.
 Samples: #Fastq folders MUST have '*-xx-*' (ex. *-01-* ) in the folder name from BaseSpace Download  
   1: 'Name' #Sample1 is '01' from sequencer
   2: 'Name' #Sample2 is '02' from sequencer
@@ -28,6 +28,7 @@ Differential_Expression_Groups: #For differential expression
   Cont_2: 4,5,6 #Sample numbers in Control Group 2 (leave empty if none)
   Exp_1: 7,8,9 #Sample numbers in Experimental Group 1
   Exp_2: 10,11,12 #Sample numbers in Experimental Group 2 (leave empty if none)
+Differential_Expression_Normalizaiton: ERCC #default 'bioinformatic', second option is 'ERCC'
 Differential_Expression_Comparisons: #Groups to compare for differential expression.  Add or remove comparisons
   Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1
   Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Compare Experimetnal groups 1 and 2 to Controls (will control for E1-E2 and C1-C2)
@@ -36,7 +37,7 @@ Overlaps:
 Startpoint:
   Fastq:
     Start: yes #default
-    Pre-combined: no #default  Fastq files have been combined and all exists in one folder in the format xxx-01-xxx_R1.fastq.gz or xxx-01-xxx_R2.fastq.gz
+    Pre-combined: yes #default  Fastq files have been combined and all exists in one folder in the format xxx-01-xxx_R1.fastq.gz or xxx-01-xxx_R2.fastq.gz
     Fastq_directory: / #/projects/ctsi/nimerlab/to/directory/ #Enter Fastq parent directory here if raw, or actual directory if processed.
   Bam:
     Start: no #start from bam.
