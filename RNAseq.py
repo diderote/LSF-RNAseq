@@ -32,7 +32,7 @@ To do:
 
 '''
 
-import os,re,datetime
+import os,re,datetime,glob
 version=0.1
 
 #### Parse Experimental File
@@ -423,7 +423,6 @@ def stage(exp):
 def fastqc(exp):
     
     from shutil import move
-    import glob
     
     print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
     
@@ -486,7 +485,6 @@ def fastqc(exp):
 def fastq_screen(exp):
     
     from shutil import move
-    import glob
     
     print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
