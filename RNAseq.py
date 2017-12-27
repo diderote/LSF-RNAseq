@@ -337,8 +337,8 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
 
     #BSUB -J JOB_{job_name}_ID_{random_number}
     #BSUB -P nimerlab
-    #BSUB -o {job_log_folder}/{job_name_o}_logs_{rand_id}.stdout.%J
-    #BSUB -e {job_log_folder}/{job_name_e}_logs_{rand_id}.stderr.%J
+    #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
+    #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
     #BSUB -W 120:00
     #BSUB -n 1
     #BSUB -q {q}
