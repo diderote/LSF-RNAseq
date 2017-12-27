@@ -578,6 +578,8 @@ def trim(exp):
     for l in logs:
         move(l,exp.qc_folder) 
     
+    exp.trimmed = True
+
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
     exp.tasks_completed.append('Trim ' + str(datetime.datetime.now()))
