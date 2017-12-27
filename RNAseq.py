@@ -574,7 +574,7 @@ def trim(exp):
     
     #move logs to qc folder        
     logs = glob.glob(exp.fastq['Folder'] + '*.txt')
-    logs.append(glob.glob(exp.fastq['Folder'] + '*.log'))
+    logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
     for l in logs:
         move(l,exp.qc_folder) 
     
