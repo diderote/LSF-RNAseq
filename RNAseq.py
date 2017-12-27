@@ -68,7 +68,7 @@ def parse_yaml():
     exp.out_dir = yml['Output_directory']
     
     #Log file
-    exp.log_file = exp.job_folder + exp.name + "-" + exp.date + '.out'
+    exp.log_file = exp.job_folder + exp.name + "-" + exp.date + '.log'
     
     print('Pipeline version ' + str(version) + ' run on ' + datetime.datetime.today().strftime('%Y-%m-%d') + '\n', file=open(exp.log_file, 'w'))
     print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
@@ -329,7 +329,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
          )
     '''
 
-    rand_id = str(random.randint(0, 10000))
+    rand_id = str(random.randint(0, 100000))
     str_comd_list =  '\n'.join(command_list)
     cmd = '''
 
@@ -373,7 +373,7 @@ def job_wait(rand_id, job_log_folder):
     time = 0
     while running:
         jobs_list = os.popen('sleep 10|bhist -w').read()
-        print('job  {}'.format(rand_id)+ '\n', file=open(exp.log_file, 'a'))
+        print('Waiting for jobs to finish... {}'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
         if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) == 0:
             running = False
