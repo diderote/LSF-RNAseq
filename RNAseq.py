@@ -493,6 +493,9 @@ def fastq_screen(exp):
     #Make QC folder
     exp.qc_folder = exp.fastq['Folder'] + 'qc/'
     os.makedirs(exp.qc_folder, exist_ok=True)
+
+    #change to experimental directory in scratch
+    os.chdir(exp.fastq['Folder'])
     
     #Submit fastqc and fastq_screen jobs for each sample
     for number,sample in exp.samples.items():
@@ -515,10 +518,12 @@ def fastq_screen(exp):
         job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
     
     #move to qc folder        
-    fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen.txt')
+    fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
     for f in fastqs_files:
         move(f,exp.qc_folder)
-    
+
+    #change to experimental directory in scratch
+    os.chdir(exp.scratch)
     exp.tasks_completed.append('Fastq_screen ' + str(datetime.datetime.now()))
     print('Screening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
@@ -529,7 +534,10 @@ def fastq_screen(exp):
 def trim(exp):
     
     print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
+        
+    #change to experimental directory in scratch
+    os.chdir(exp.fastq['Folder'])
+
     #Submit fastqc and fastq_screen jobs for each sample
     for number,sample in exp.samples.items():
         print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
@@ -572,6 +580,8 @@ def trim(exp):
     for l in logs:
         move(l,exp.qc_folder) 
     
+    #change to experimental directory in scratch
+    os.chdir(exp.scratch)
     exp.tasks_completed.append('Trim ' + str(datetime.datetime.now()))
     print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
@@ -663,7 +673,6 @@ def spike(exp):
         print("No ERCC spike-in processing."+ '\n', file=open(exp.log_file, 'a'))
     
     return(exp)
-
 
 
 def rsem(exp):
