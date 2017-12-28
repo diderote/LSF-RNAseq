@@ -542,12 +542,14 @@ def trim(exp):
         
         trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample) 
         skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
-        
+        remove='rm {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
                         trim_galore,
-                        skewer
+                        skewer,
+                        remove
                        ]
 
         exp.job_id.append(send_job(command_list=command_list, 
@@ -591,7 +593,7 @@ def preprocess(exp):
     
     #exp=fastq_cat(exp)
     exp=stage(exp)
-    exp=fastqc(exp)
+    #exp=fastqc(exp)
     exp=fastq_screen(exp)
     exp=trim(exp)
     exp=fastqc(exp)
