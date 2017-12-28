@@ -28,6 +28,7 @@ To do:
     - Set up for mm10 alignment
     - fastq cat (cat.py preliminary)
     - start and stop points
+    - pick up where left off
 
 
 '''
@@ -42,8 +43,6 @@ def parse_yaml():
     
     import argparse,yaml
     import pandas as pd
-    
-    
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
@@ -471,7 +470,6 @@ def fastqc(exp):
     fastqc_files = glob.glob(exp.fastq['Folder'] + '*.zip')
     for f in fastqc_files:
         copy2(f,exp.qc_folder)
-        rmtree(f)
      
     exp.tasks_completed.append('FastQC ' + str(datetime.datetime.now()))
     
@@ -515,7 +513,6 @@ def fastq_screen(exp):
     fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
     for f in fastqs_files:
         copy2(f,exp.qc_folder)
-        rmtree(f)
 
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
@@ -574,7 +571,6 @@ def trim(exp):
     logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
     for l in logs:
         copy2(l,exp.qc_folder) 
-        rmtree(l)
 
     exp.trimmed = True
 
@@ -631,7 +627,6 @@ def spike(exp):
         files = glob.glob(exp.scratch + '*ERCC*.tab')
         for file in files:
             copy2(file,exp.scratch + 'ERCC/')
-            rmtree(file)
         
         ### Generate one matrix for all spike_counts
         matrix='rsem-generate-data-matrix '
@@ -725,7 +720,6 @@ def rsem(exp):
     results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
     for file in results:
         copy2(file,exp.scratch + 'RSEM_results/')
-        rmtree(file)
 
     exp.tasks_completed.append('RSEM ' + str(datetime.datetime.now()))
     print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
