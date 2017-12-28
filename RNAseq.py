@@ -25,15 +25,17 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
-    - Set up for mm10 alignment
+    - Set up slueth
+    - set analyses for mm10 (convert string)
     - fastq cat (cat.py preliminary)
     - start and stop points
-    - pick up where left off
+    - finish pick up where left off
+    - finish exception pickle.dumps
 
 
 '''
 
-import os,re,datetime,glob
+import os,re,datetime,glob, pickle
 from shutil import copy2,copytree,rmtree
 import subprocess as sub
 version=0.1
@@ -52,260 +54,269 @@ def parse_yaml():
 
     yml=yaml.safe_load(exp_input)
     exp_input.close()
-    
+
     #Create an new object to store experimental variables
     exp = type('', (), {})()
     
     #Setting Scratch folder
     exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/' + yml['Name'] + '/'
 
-    #Setting Job Folder
-    exp.job_folder = exp.scratch + 'logs/'
-    os.makedirs(exp.job_folder, exist_ok=True)
-
     #Passing paramters to new object
     exp.date = yml['Rundate']   
     exp.name = yml['Name']
     exp.out_dir = yml['Output_directory']
     
-    #Log file
-    exp.log_file = exp.job_folder + exp.name + "-" + exp.date + '.log'
+    #check whether experiment has been attempted
+    filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
     
-    print('Pipeline version ' + str(version) + ' run on ' + datetime.datetime.today().strftime('%Y-%m-%d') + '\n', file=open(exp.log_file, 'w'))
-    print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
-    print('Reading experimental file...' + '\n', file=open(exp.log_file, 'a'))
+    if os.path.isfile(filename):
+        exp = pickle.load(filename)
+        os.remove(filename)
+        return exp 
 
-    #Start Point
-    start=[]
-    if yml['Startpoint']['Fastq']['Start'] : start.append('Fastq') 
-    if yml['Startpoint']['Bam']['Start'] : start.append('Bam')
-    if yml['Startpoint']['Gene_Counts']['Start'] : start.append('Counts')
-    if len(start) != 1:
-        raise ValueError("There are more than one startpoints in this experimental file.  Please fix the file and resubmit.")
-    else:
-        exp.start = start[0]
-        print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
-   
-    #Start Fastq
-    exp.fastq = {'Run': False}
-    if yml['Startpoint']['Fastq']['Start']:
-        exp.fastq['Run'] = True
-        exp.fastq['catenated']=yml['Startpoint']['Fastq']['Pre-combined']
-        if os.path.isdir(yml['Startpoint']['Fastq']['Fastq_directory']):
-            exp.fastq['Folder']=yml['Startpoint']['Fastq']['Fastq_directory']
-        else:
-            raise IOError("Can't Find Fastq Folder.")
-
-    #Spike
-    exp.spike = False
-    if yml['ERCC_spike']:
-        exp.spike = True
-        
-    #Initialize trimmed
-    exp.trimmed = False
-            
-    #Start Bam
-    exp.bam = {'Run': False}
-    if yml['Startpoint']['Bam']['Start']:
-        exp.bam['Run'] = True
-        if os.path.isdir(yml['Startpoint']['Bam']['Bam_folder']):
-            exp.bam['Folder'] = yml['Startpoint']['Bam']['Bam_folder']
-        else: 
-            raise IOError("Can't Find Bam Folder.")    
-        print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
-
-    #Start Gene Counts
-    exp.counts = {'Run': False}
-    if yml['Startpoint']['Gene_Counts']['Start']:
-        exp.counts['Run'] = True
-        if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
-            exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
-                                           header= 0, index_col=0, sep="\t")
-        else:
-            raise IOError("Count Matrix Not Found.")    
-        print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
-    
-    #End Point
-    if yml['Stop']['Alignment']:
-        exp.stop = 'Alignment'
-        print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
-    elif yml['Stop']['Differential_Expression']:
-        exp.stop = 'DE'
-        print('Pipeline stopping after differential expression analysis.'+ '\n', file=open(exp.log_file, 'a'))
-    else:
-        exp.stop = 'END'
-        print('Pipeline stopping after full analysis.'+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Genome
-    if yml['Genome'] not in ['hg38', 'mm10']:
-        raise ValueError("Genome must be either hg38 or mm10.")
-    else:
-        exp.genome = yml['Genome']
-        print('Processing data with: ' + str(exp.genome)+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Counts
-    if not 0 < yml['Total_sample_number'] < 19:
-        raise ValueError("This pipeline is only set up to handle up to 18 samples.")
-    else:
-        exp.sample_number = yml['Total_sample_number']
-        print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Sample Names
-    exp.samples = {}
-    count = 1
-    for key,name in yml['Samples'].items():
-        if count <= exp.sample_number:
-            exp.samples[key]=name
-            count += 1
-        else:
-            break
-    print("Samples: "+ '\n', file=open(exp.log_file, 'a'))
-    print(str(exp.samples) + '\n', file=open(exp.log_file, 'a'))
-    
-    #Initialize Job_ID list
-    exp.job_id=[]
-    
-    #Out Folder
-    os.makedirs(exp.out_dir, exist_ok=True)
-    print("Pipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Differential Expression Groups
-    if exp.stop == 'Alignment':
-        pass
     else: 
-        exp.de_groups = {}
-        for key, item in yml['Differential_Expression_Groups'].items():
-            if item == None:
-                pass
-            else:
-                temp=item.split(',')
-                exp.de_groups[key] = []
-                for x in temp:
-                    exp.de_groups[key].append(exp.samples[int(x)])
-            
-    #Differential Expression Design
-    if exp.stop == 'Alignment':
-        pass
-    else:
-        print("Parsing experimental design for differential expression..."+ '\n', file=open(exp.log_file, 'a'))
-        
-        #Normalization method
-        exp.norm = 'bioinformatic'
-        if yml['Differential_Expression_Normalizaiton'] == 'ERCC':
-            exp.norm = 'ERCC'
-            print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
-        elif yml['Differential_Expression_Normalizaiton'] == 'bioinformatic':
-            print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
-        else:
-            print("I don't know the " + yml['Differential_Expression_Normalizaiton'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
-    
-        exp.designs={}
-        for key, comparison in yml['Differential_Expression_Comparisons'].items():
-            if comparison == None:
-                pass
-            else:
-                exp.designs[key]={}
-                E = comparison.split('v')[0]
-                if len(E.split('-')) == 1:
-                    E_type = 1
-                elif len(E.split('-')) == 2:
-                    E1, E2 = E.split('-')[0], E.split('-')[1]
-                    E_type = 2
-                else:
-                    raise ValueError("Cannot process " + str(key) + ".  Check format E1 or E1-E2. Or too many Groups for pipline.")
-                C = comparison.split('v')[1]
-                if len(C.split('-')) == 1:
-                    C_type = 1
-                elif len(C.split('-'))== 2:
-                    C1,C2 = C.split('-')[0], C.split('-')[1]
-                    C_type = 2
-                else:
-                    raise ValueError("Cannot process " + str(key) + ".  Check format C1 or C1-C2.  Or too man comparisons.")
-            
-                #Check comparison for group consistency.
-                error = "Can't make a comparison with an unspecified group. Make sure your Comparisons match your Groups for DE"
-                groups = list(exp.de_groups.keys())
-                
-                exp.designs[key]['all_samples']=[]
-                exp.designs[key]['main_comparison']=[]
-                exp.designs[key]['compensation']=[]
-                
-                if E_type == 1:
-                    if E not in groups:
-                        raise ValueError(error)
-                    else:
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[E])
-                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[E]))
-                        if C_type == 1:
-                            if C not in groups:
-                                raise ValueError(error)
-                            else:
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[C])
-                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[C]))
-                        elif C_type == 2:
-                            raise ValueError("Cannot batch compensate 1 Experimental group with 2 Control groups")
-                        else:
-                            raise ValueError(error)
-                        
-                        exp.designs[key]['design'] = "~main_comparison"
-                        exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
-                                                                    "main_comparison": exp.designs[key]['main_comparison']})
-                    print('DE design: '+ '\n', file=open(exp.log_file, 'a'))
-                    print(str(exp.designs) + '\n', file=open(exp.log_file, 'a')) 
-                elif E_type == 2:
-                    if E1 not in groups or E2 not in groups:
-                        raise ValueError(error)
-                    else:
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[E1])
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[E2])
-                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[E1] + exp.de_groups[E2]))
-                        if C_type == 1:
-                            raise ValueError("Cannot batch compensate 2 Experimental groups with 1 Control groups.")
-                        elif C_type == 2:
-                            if C1 not in groups or C2 not in groups:
-                                raise ValueError(error)
-                            else:
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[C1])
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[C2])
-                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[C1] + exp.de_groups[C2]))
-                        else:
-                            raise ValueError(error)                                     
-                        
-                        exp.designs[key]['compensation'].extend((['Group_1']*len(exp.de_groups[E1]) +
-                                                                 ['Group_2']*len(exp.de_groups[C1]) +
-                                                                 ['Group_1']*len(exp.de_groups[E2]) +
-                                                                 ['Group_2']*len(exp.de_groups[C2])))
-                        exp.designs[key]['design'] = "~compensation + main_comparison"
-                        exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
-                                                                   "main_comparison": exp.designs[key]['main_comparison'],
-                                                                   "compensation": exp.designs[key]['compensation']})
-                    print('DE design: '+ '\n', file=open(exp.log_file, 'a'))
-                    print(str(exp.designs)+ '\n', file=open(exp.log_file, 'a')) 
-                else:
-                    raise ValueError(error)
-    
-    #DE overlaps
-    exp.overlaps = {}
-    if yml['Overlaps'] == None:
-        print('There are no overlaps to process for muliptle differential expression analyses.'+ '\n', file=open(exp.log_file, 'a'))
-        exp.run_overlap = False
-    else:
-        exp.run_overlap = True
-        for key, item in yml['Overlaps'].items():
-            if item == None:
-                pass    
-            else:
-                exp.overlaps[key] = item.split('v')
-        print('Overlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).'+ '\n', file=open(exp.log_file, 'a'))
-        print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
-        
-    #Initialized Process Complete List
-    exp.tasks_completed=['Parsed ' + str(datetime.datetime.now())]
-    
-    print('Experiment file parsed: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
 
+        #Setting Job Folder
+        exp.job_folder = exp.scratch + 'logs/'
+        os.makedirs(exp.job_folder, exist_ok=True)
+
+        #Log file
+        exp.log_file = exp.out_dir + exp.name + "-" + exp.date + '.log'
+        
+        print('Pipeline version ' + str(version) + ' run on ' + datetime.datetime.today().strftime('%Y-%m-%d') + '\n', file=open(exp.log_file, 'w'))
+        print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
+        print('Reading experimental file...' + '\n', file=open(exp.log_file, 'a'))
+
+        #Start Point
+        start=[]
+        if yml['Startpoint']['Fastq']['Start'] : start.append('Fastq') 
+        if yml['Startpoint']['Bam']['Start'] : start.append('Bam')
+        if yml['Startpoint']['Gene_Counts']['Start'] : start.append('Counts')
+        if len(start) != 1:
+            raise ValueError("There are more than one startpoints in this experimental file.  Please fix the file and resubmit.")
+        else:
+            exp.start = start[0]
+            print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
+       
+        #Start Fastq
+        exp.fastq = {'Run': False}
+        if yml['Startpoint']['Fastq']['Start']:
+            exp.fastq['Run'] = True
+            exp.fastq['catenated']=yml['Startpoint']['Fastq']['Pre-combined']
+            if os.path.isdir(yml['Startpoint']['Fastq']['Fastq_directory']):
+                exp.fastq['Folder']=yml['Startpoint']['Fastq']['Fastq_directory']
+            else:
+                raise IOError("Can't Find Fastq Folder.")
+
+        #Spike
+        exp.spike = False
+        if yml['ERCC_spike']:
+            exp.spike = True
+            
+        #Initialize trimmed
+        exp.trimmed = False
+                
+        #Start Bam
+        exp.bam = {'Run': False}
+        if yml['Startpoint']['Bam']['Start']:
+            exp.bam['Run'] = True
+            if os.path.isdir(yml['Startpoint']['Bam']['Bam_folder']):
+                exp.bam['Folder'] = yml['Startpoint']['Bam']['Bam_folder']
+            else: 
+                raise IOError("Can't Find Bam Folder.")    
+            print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
+
+        #Start Gene Counts
+        exp.counts = {'Run': False}
+        if yml['Startpoint']['Gene_Counts']['Start']:
+            exp.counts['Run'] = True
+            if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
+                exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
+                                               header= 0, index_col=0, sep="\t")
+            else:
+                raise IOError("Count Matrix Not Found.")    
+            print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
+        
+        #End Point
+        if yml['Stop']['Alignment']:
+            exp.stop = 'Alignment'
+            print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
+        elif yml['Stop']['Differential_Expression']:
+            exp.stop = 'DE'
+            print('Pipeline stopping after differential expression analysis.'+ '\n', file=open(exp.log_file, 'a'))
+        else:
+            exp.stop = 'END'
+            print('Pipeline stopping after full analysis.'+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Genome
+        if yml['Genome'] not in ['hg38', 'mm10']:
+            raise ValueError("Genome must be either hg38 or mm10.")
+        else:
+            exp.genome = yml['Genome']
+            print('Processing data with: ' + str(exp.genome)+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Counts
+        if not 0 < yml['Total_sample_number'] < 19:
+            raise ValueError("This pipeline is only set up to handle up to 18 samples.")
+        else:
+            exp.sample_number = yml['Total_sample_number']
+            print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Sample Names
+        exp.samples = {}
+        count = 1
+        for key,name in yml['Samples'].items():
+            if count <= exp.sample_number:
+                exp.samples[key]=name
+                count += 1
+            else:
+                break
+        print("Samples: "+ '\n', file=open(exp.log_file, 'a'))
+        print(str(exp.samples) + '\n', file=open(exp.log_file, 'a'))
+        
+        #Initialize Job_ID list
+        exp.job_id=[]
+        
+        #Out Folder
+        os.makedirs(exp.out_dir, exist_ok=True)
+        print("Pipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Differential Expression Groups
+        if exp.stop == 'Alignment':
+            pass
+        else: 
+            exp.de_groups = {}
+            for key, item in yml['Differential_Expression_Groups'].items():
+                if item == None:
+                    pass
+                else:
+                    temp=item.split(',')
+                    exp.de_groups[key] = []
+                    for x in temp:
+                        exp.de_groups[key].append(exp.samples[int(x)])
+                
+        #Differential Expression Design
+        if exp.stop == 'Alignment':
+            pass
+        else:
+            print("Parsing experimental design for differential expression..."+ '\n', file=open(exp.log_file, 'a'))
+            
+            #Normalization method
+            exp.norm = 'bioinformatic'
+            if yml['Differential_Expression_Normalizaiton'] == 'ERCC':
+                exp.norm = 'ERCC'
+                print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
+            elif yml['Differential_Expression_Normalizaiton'] == 'bioinformatic':
+                print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
+            else:
+                print("I don't know the " + yml['Differential_Expression_Normalizaiton'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
+        
+            exp.designs={}
+            for key, comparison in yml['Differential_Expression_Comparisons'].items():
+                if comparison == None:
+                    pass
+                else:
+                    exp.designs[key]={}
+                    E = comparison.split('v')[0]
+                    if len(E.split('-')) == 1:
+                        E_type = 1
+                    elif len(E.split('-')) == 2:
+                        E1, E2 = E.split('-')[0], E.split('-')[1]
+                        E_type = 2
+                    else:
+                        raise ValueError("Cannot process " + str(key) + ".  Check format E1 or E1-E2. Or too many Groups for pipline.")
+                    C = comparison.split('v')[1]
+                    if len(C.split('-')) == 1:
+                        C_type = 1
+                    elif len(C.split('-'))== 2:
+                        C1,C2 = C.split('-')[0], C.split('-')[1]
+                        C_type = 2
+                    else:
+                        raise ValueError("Cannot process " + str(key) + ".  Check format C1 or C1-C2.  Or too man comparisons.")
+                
+                    #Check comparison for group consistency.
+                    error = "Can't make a comparison with an unspecified group. Make sure your Comparisons match your Groups for DE"
+                    groups = list(exp.de_groups.keys())
+                    
+                    exp.designs[key]['all_samples']=[]
+                    exp.designs[key]['main_comparison']=[]
+                    exp.designs[key]['compensation']=[]
+                    
+                    if E_type == 1:
+                        if E not in groups:
+                            raise ValueError(error)
+                        else:
+                            exp.designs[key]['all_samples'].extend(exp.de_groups[E])
+                            exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[E]))
+                            if C_type == 1:
+                                if C not in groups:
+                                    raise ValueError(error)
+                                else:
+                                    exp.designs[key]['all_samples'].extend(exp.de_groups[C])
+                                    exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[C]))
+                            elif C_type == 2:
+                                raise ValueError("Cannot batch compensate 1 Experimental group with 2 Control groups")
+                            else:
+                                raise ValueError(error)
+                            
+                            exp.designs[key]['design'] = "~main_comparison"
+                            exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
+                                                                        "main_comparison": exp.designs[key]['main_comparison']})
+                        print('DE design: '+ '\n', file=open(exp.log_file, 'a'))
+                        print(str(exp.designs) + '\n', file=open(exp.log_file, 'a')) 
+                    elif E_type == 2:
+                        if E1 not in groups or E2 not in groups:
+                            raise ValueError(error)
+                        else:
+                            exp.designs[key]['all_samples'].extend(exp.de_groups[E1])
+                            exp.designs[key]['all_samples'].extend(exp.de_groups[E2])
+                            exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[E1] + exp.de_groups[E2]))
+                            if C_type == 1:
+                                raise ValueError("Cannot batch compensate 2 Experimental groups with 1 Control groups.")
+                            elif C_type == 2:
+                                if C1 not in groups or C2 not in groups:
+                                    raise ValueError(error)
+                                else:
+                                    exp.designs[key]['all_samples'].extend(exp.de_groups[C1])
+                                    exp.designs[key]['all_samples'].extend(exp.de_groups[C2])
+                                    exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[C1] + exp.de_groups[C2]))
+                            else:
+                                raise ValueError(error)                                     
+                            
+                            exp.designs[key]['compensation'].extend((['Group_1']*len(exp.de_groups[E1]) +
+                                                                     ['Group_2']*len(exp.de_groups[C1]) +
+                                                                     ['Group_1']*len(exp.de_groups[E2]) +
+                                                                     ['Group_2']*len(exp.de_groups[C2])))
+                            exp.designs[key]['design'] = "~compensation + main_comparison"
+                            exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
+                                                                       "main_comparison": exp.designs[key]['main_comparison'],
+                                                                       "compensation": exp.designs[key]['compensation']})
+                        print('DE design: '+ '\n', file=open(exp.log_file, 'a'))
+                        print(str(exp.designs)+ '\n', file=open(exp.log_file, 'a')) 
+                    else:
+                        raise ValueError(error)
+        
+        #DE overlaps
+        exp.overlaps = {}
+        if yml['Overlaps'] == None:
+            print('There are no overlaps to process for muliptle differential expression analyses.'+ '\n', file=open(exp.log_file, 'a'))
+            exp.run_overlap = False
+        else:
+            exp.run_overlap = True
+            for key, item in yml['Overlaps'].items():
+                if item == None:
+                    pass    
+                else:
+                    exp.overlaps[key] = item.split('v')
+            print('Overlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).'+ '\n', file=open(exp.log_file, 'a'))
+            print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
+            
+        #Initialized Process Complete List
+        exp.tasks_completed=['Parsed']
+        
+        print('Experiment file parsed: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        
+        return exp
 
 # Sends job to LSF resource manager queues
 def send_job(command_list, job_name, job_log_folder, q, mem):
@@ -366,7 +377,6 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
    
     return rand_id
 
-
 # waits for LSF jobs to finish
 def job_wait(rand_id, job_log_folder):
     
@@ -381,7 +391,6 @@ def job_wait(rand_id, job_log_folder):
         else:
             time += 10
     
-
 def fastq_cat(exp):
     
     '''
@@ -393,377 +402,498 @@ def fastq_cat(exp):
 # Stages experiment in a scratch folder
 def stage(exp):
     
-    set_temp='/scratch/projects/nimerlab/tmp'
-    sub.run('export TMPDIR=' + set_temp, shell=True)
-    print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Stage Experiment Folder in Scratch
-    os.makedirs(exp.scratch, exist_ok=True)
-    print('Staging in ' + exp.scratch+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Copy Fastq to scratch fastq folder
-    if os.path.exists(exp.scratch + 'Fastq'):
-        rmtree(exp.scratch + 'Fastq')
-    copytree(exp.fastq['Folder'], exp.scratch + 'Fastq')
+    if 'Stage' in exp.tasks_completed:
+        return
 
-    #change to experimental directory in scratch
-    os.chdir(exp.scratch)
-    
-    exp.fastq['Folder']= exp.scratch + 'Fastq/'
-    
-    exp.tasks_completed.append('Stage ' + str(datetime.datetime.now()))
-    
-    print('Staging complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
+    else:
 
+        set_temp='/scratch/projects/nimerlab/tmp'
+        sub.run('export TMPDIR=' + set_temp, shell=True)
+        print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Stage Experiment Folder in Scratch
+        os.makedirs(exp.scratch, exist_ok=True)
+        print('Staging in ' + exp.scratch+ '\n', file=open(exp.log_file, 'a'))
+        
+        #Copy Fastq to scratch fastq folder
+        if os.path.exists(exp.scratch + 'Fastq'):
+            rmtree(exp.scratch + 'Fastq')
+        copytree(exp.fastq['Folder'], exp.scratch + 'Fastq')
+
+        #change to experimental directory in scratch
+        os.chdir(exp.scratch)
+        
+        exp.fastq['Folder']= exp.scratch + 'Fastq/'
+        
+        exp.tasks_completed.append('Stage')
+        
+        print('Staging complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        
+        return exp
 
 def fastqc(exp):
     
-    print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
+    if 'FastQC' in exp.tasks_completed:
+        return
 
-    #Make QC folder
-    exp.qc_folder = exp.fastq['Folder'] + 'qc/'
-    os.makedirs(exp.qc_folder, exist_ok=True)
-    
-    #Submit fastqc and fastq_screen jobs for each sample
-    if exp.trimmed == False:
-        
-        for number,sample in exp.samples.items():
-            command_list = ['module rm python',
-                            'module rm perl',
-                            'source activate RNAseq',
-                            'fastqc ' + exp.fastq['Folder'] + sample + '*',
-                           ]
-
-            exp.job_id.append(send_job(command_list=command_list, 
-                                       job_name= sample + '_fastqc',
-                                       job_log_folder=exp.job_folder,
-                                       q= 'general',
-                                       mem=1000
-                                      )
-                             )
-    elif exp.trimmed:
-
-        for number,sample in exp.samples.items():
-            command_list = ['module rm python',
-                            'module rm perl',
-                            'source activate RNAseq',
-                            'fastqc ' + exp.fastq['Folder'] + sample + '_trim_*',
-                           ]
-
-            exp.job_id.append(send_job(command_list=command_list, 
-                                       job_name= sample + '_fastqc_trim',
-                                       job_log_folder=exp.job_folder,
-                                       q= 'general',
-                                       mem=1000
-                                      )
-                             )
     else:
-        raise ValueError("Error processing trimming status.")
-    
-    #Wait for jobs to finish
-    for rand_id in exp.job_id:
-        job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-    
-    #move to qc folder
-    fastqc_files = glob.glob(exp.fastq['Folder'] + '*.zip')
-    for f in fastqc_files:
-        copy2(f,exp.qc_folder)
-     
-    exp.tasks_completed.append('FastQC ' + str(datetime.datetime.now()))
-    
-    print('FastQC complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
+        try:
+            print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
 
+            #Make QC folder
+            exp.qc_folder = exp.fastq['Folder'] + 'qc/'
+            os.makedirs(exp.qc_folder, exist_ok=True)
+            
+            #Submit fastqc and fastq_screen jobs for each sample
+            if exp.trimmed == False:
+                
+                for number,sample in exp.samples.items():
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    'fastqc ' + exp.fastq['Folder'] + sample + '*',
+                                   ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                               job_name= sample + '_fastqc',
+                                               job_log_folder=exp.job_folder,
+                                               q= 'general',
+                                               mem=1000
+                                              )
+                                     )
+            elif exp.trimmed:
+
+                for number,sample in exp.samples.items():
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    'fastqc ' + exp.fastq['Folder'] + sample + '_trim_*',
+                                   ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                               job_name= sample + '_fastqc_trim',
+                                               job_log_folder=exp.job_folder,
+                                               q= 'general',
+                                               mem=1000
+                                              )
+                                     )
+            else:
+                raise ValueError("Error processing trimming status.")
+            
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            #move to qc folder
+            fastqc_files = glob.glob(exp.fastq['Folder'] + '*.zip')
+            for f in fastqc_files:
+                copy2(f,exp.qc_folder)
+             
+            exp.tasks_completed.append('FastQC')
+            
+            print('FastQC complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            return exp
+        
+        except:
+            print('Error in FastQC.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error in FastQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def fastq_screen(exp):
     
-    print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    #Make QC folder
-    exp.qc_folder = exp.fastq['Folder'] + 'qc/'
-    os.makedirs(exp.qc_folder, exist_ok=True)
+    if 'Fastq_screen' in exp.tasks_completed:
+        return
 
-    #change to experimental directory in scratch
-    os.chdir(exp.fastq['Folder'])
-    
-    #Submit fastqc and fastq_screen jobs for each sample
-    for number,sample in exp.samples.items():
-        command_list = ['module rm python',
-                        'module rm perl',
-                        'source activate RNAseq',
-                        'fastq_screen --aligner bowtie2 ' + exp.fastq['Folder'] + sample + '_R1.fastq.gz'
-                       ]
+    else:
+        try:
 
-        exp.job_id.append(send_job(command_list=command_list, 
-                                   job_name= sample + '_fastq_screen',
-                                   job_log_folder=exp.job_folder,
-                                   q= 'general',
-                                   mem=1000
-                                  )
-                         )
-    
-    #Wait for jobs to finish
-    for rand_id in exp.job_id:
-        job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-    
-    #move to qc folder        
-    fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
-    for f in fastqs_files:
-        copy2(f,exp.qc_folder)
+            print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            #Make QC folder
+            exp.qc_folder = exp.fastq['Folder'] + 'qc/'
+            os.makedirs(exp.qc_folder, exist_ok=True)
 
-    #change to experimental directory in scratch
-    os.chdir(exp.scratch)
-    exp.tasks_completed.append('Fastq_screen ' + str(datetime.datetime.now()))
-    print('Screening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
+            #change to experimental directory in scratch
+            os.chdir(exp.fastq['Folder'])
+            
+            #Submit fastqc and fastq_screen jobs for each sample
+            for number,sample in exp.samples.items():
+                command_list = ['module rm python',
+                                'module rm perl',
+                                'source activate RNAseq',
+                                'fastq_screen --aligner bowtie2 ' + exp.fastq['Folder'] + sample + '_R1.fastq.gz'
+                               ]
 
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= sample + '_fastq_screen',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=1000
+                                          )
+                                 )
+            
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            #move to qc folder        
+            fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
+            for f in fastqs_files:
+                copy2(f,exp.qc_folder)
+
+            #change to experimental directory in scratch
+            os.chdir(exp.scratch)
+            exp.tasks_completed.append('Fastq_screen')
+            print('Screening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            return exp
+
+        except:
+            print('Error in Fastq Screen.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error in Fastq_screen. Fix problem then resubmit with same command to continue from last completed step.')
 
 # Trimming based on standard UM SCCC Core Nextseq 500 technical errors
 def trim(exp):
 
-    print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-        
-    #change to experimental directory in scratch
-    os.chdir(exp.fastq['Folder'])
+    if 'Trim' in exp.tasks_completed:
+        return
 
-    #Submit fastqc and fastq_screen jobs for each sample
-    for number,sample in exp.samples.items():
-        print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
-        
-        trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample) 
-        skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+    else:
+        try:
+            print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+                
+            #change to experimental directory in scratch
+            os.chdir(exp.fastq['Folder'])
 
-        command_list = ['module rm python',
-                        'module rm perl',
-                        'source activate RNAseq',
-                        trim_galore,
-                        skewer
-                       ]
+            #Submit fastqc and fastq_screen jobs for each sample
+            for number,sample in exp.samples.items():
+                print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+                
+                trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample) 
+                skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
 
-        exp.job_id.append(send_job(command_list=command_list, 
-                                   job_name= sample + '_trim',
-                                   job_log_folder=exp.job_folder,
-                                   q= 'general',
-                                   mem=1000
-                                  )
+                command_list = ['module rm python',
+                                'module rm perl',
+                                'source activate RNAseq',
+                                trim_galore,
+                                skewer
+                               ]
+
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= sample + '_trim',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=1000
+                                          )
+                                 )
+            
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            
+            for number,sample in exp.samples.items():
+                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
+                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
                          )
-    
-    #Wait for jobs to finish
-    for rand_id in exp.job_id:
-        job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-    
-    
-    for number,sample in exp.samples.items():
-        os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
-                  '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
-                 )
-        
-        os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
-                  '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
-                 )
-    
-    #move logs to qc folder        
-    logs = glob.glob(exp.fastq['Folder'] + '*.txt')
-    logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
-    for l in logs:
-        copy2(l,exp.qc_folder) 
+                
+                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
+                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+                         )
+            
+            #move logs to qc folder        
+            logs = glob.glob(exp.fastq['Folder'] + '*.txt')
+            logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
+            for l in logs:
+                copy2(l,exp.qc_folder) 
 
-    exp.trimmed = True
+            exp.trimmed = True
 
-    #change to experimental directory in scratch
-    os.chdir(exp.scratch)
-    exp.tasks_completed.append('Trim ' + str(datetime.datetime.now()))
-    print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
+            #change to experimental directory in scratch
+            os.chdir(exp.scratch)
+            exp.tasks_completed.append('Trim')
+            print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            return exp
+        except:
+            print('Error in trimming.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error during trimming. Fix problem then resubmit with same command to continue from last completed step.')
 
 def preprocess(exp):
     
     #exp=fastq_cat(exp)
     exp=stage(exp)
-    #exp=fastqc(exp)
     exp=fastq_screen(exp)
     exp=trim(exp)
-    exp=fastqc(exp)
-    
+    exp=fastqc(exp)  
     return exp
-
 
 def spike(exp):
     
-    if exp.spike:
-        print("Processing with ERCC spike-in: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-        
-        #Submit STAR alingment for spike-ins for each sample
-        for number,sample in exp.samples.items():
-            print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+    if 'Spike' in exp.tasks_completed:
+        return
 
-            spike='STAR --runThreadN 10 --genomeDIR /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(loc=exp.fastq['Folder'],sample=sample)
+    elif exp.spike:
+        try:
+            print("Processing with ERCC spike-in: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            #Submit STAR alingment for spike-ins for each sample
+            for number,sample in exp.samples.items():
+                print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
+                spike='STAR --runThreadN 10 --genomeDIR /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(loc=exp.fastq['Folder'],sample=sample)
+
+                command_list = ['module rm python',
+                                'module rm perl',
+                                'source activate RNAseq',
+                                spike
+                               ]
+
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= sample + '_ERCC',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=5000
+                                          )
+                                 )
+
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            #move results to ERCC folder
+            os.makedirs(exp.scratch + 'ERCC/', exist_ok=True)
+            files = glob.glob(exp.scratch + '*ERCC*.tab')
+            for file in files:
+                copy2(file,exp.scratch + 'ERCC/')
+            
+            ### Generate one matrix for all spike_counts
+            matrix='rsem-generate-data-matrix '
+            columns=[]
+            for number,sample in exp.samples.items():
+                matrix = matrix + exp.scratch + 'ERCC/' + '{loc}{sample}_ERCCReadsPerGene.out.tab '.format(loc=exp.scratch + 'ERCC/', sample=sample)
+                columns.append(sample)
+            
+            matrix = matrix + '> {loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/')
+            
             command_list = ['module rm python',
-                            'module rm perl',
                             'source activate RNAseq',
-                            spike
+                            matrix
                            ]
 
             exp.job_id.append(send_job(command_list=command_list, 
-                                       job_name= sample + '_ERCC',
+                                       job_name= 'ERCC_Count_Matrix',
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
-                                       mem=5000
+                                       mem=1000
                                       )
                              )
+            
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            exp.spike_counts = pd.read_csv('{loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/'),
+                                           header=0,
+                                           index_col=0,
+                                           sep="\t"
+                                          )
+            
+            print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        
+        except:
+            print('Error in spike-in processing.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error during ERCC spike-in processing. Fix problem then resubmit with same command to continue from last completed step.')
 
-        #Wait for jobs to finish
-        for rand_id in exp.job_id:
-            job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-        
-        #move results to ERCC folder
-        os.makedirs(exp.scratch + 'ERCC/', exist_ok=True)
-        files = glob.glob(exp.scratch + '*ERCC*.tab')
-        for file in files:
-            copy2(file,exp.scratch + 'ERCC/')
-        
-        ### Generate one matrix for all spike_counts
-        matrix='rsem-generate-data-matrix '
-        columns=[]
-        for number,sample in exp.samples.items():
-            matrix = matrix + exp.scratch + 'ERCC/' + '{loc}{sample}_ERCCReadsPerGene.out.tab '.format(loc=exp.scratch + 'ERCC/', sample=sample)
-            columns.append(sample)
-        
-        matrix = matrix + '> {loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/')
-        
-        command_list = ['module rm python',
-                        'source activate RNAseq',
-                        matrix
-                       ]
-
-        exp.job_id.append(send_job(command_list=command_list, 
-                                   job_name= 'ERCC_Count_Matrix',
-                                   job_log_folder=exp.job_folder,
-                                   q= 'general',
-                                   mem=1000
-                                  )
-                         )
-        
-        #Wait for jobs to finish
-        for rand_id in exp.job_id:
-            job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-        
-        exp.spike_counts = pd.read_csv('{loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/'),
-                                       header=0,
-                                       index_col=0,
-                                       sep="\t"
-                                      )
-        
-        print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-        exp.tasks_completed.append('Spike ' + str(datetime.datetime.now()))
-        
     else:
         print("No ERCC spike-in processing."+ '\n', file=open(exp.log_file, 'a'))
     
-    return(exp)
-
+    exp.tasks_completed.append('Spike')
+    return exp 
 
 def rsem(exp):
     
-    print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    if exp.genome == 'hg38':
-        #Submit RSEM-STAR for each sample
-        for number,sample in exp.samples.items():
-            print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+    if 'RSEM' in exp.tasks_completed:
+        return
 
-            align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq['Folder'],sample=sample)
-            bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
-            wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
-            plot_model='rsem-plot-model {sample} {sample}.models.pdf'
-
-            command_list = ['module rm python',
-                            'module rm perl',
-                            'source activate RNAseq',
-                            align,
-                            bam2wig,
-                            wig2bw,
-                            plot_model
-                            ]
-
-            exp.job_id.append(send_job(command_list=command_list, 
-                                        job_name= sample + '_RSEM',
-                                        job_log_folder=exp.job_folder,
-                                        q= 'bigmem',
-                                        mem=60000
-                                        )
-                              )
     else:
-        ## MM10 here.
-        raise ValueError("This pipeline is not set up for mm10.")
-    
-    
-    #Wait for jobs to finish
-    for rand_id in exp.job_id:
-        job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-     
-    #make RSEM_results folder
-    os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
-    
-    #move results to folder        
-    results = glob.glob(exp.scratch + '*.models.pdf')
-    results.append(glob.glob(exp.scratch + '*.genes.results'))
-    results.append(glob.glob(exp.scratch + '*.isoforms.results'))
-    results.append(glob.glob(exp.scratch + '*.genome.sorted.bam'))
-    results.append(glob.glob(exp.scratch + '*.genome.sorted.bam.bai'))
-    results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
-    for file in results:
-        copy2(file,exp.scratch + 'RSEM_results/')
+        try:    
+            print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            if exp.genome.lower() == 'hg38':
+                #Submit RSEM-STAR for each sample
+                for number,sample in exp.samples.items():
+                    print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-    exp.tasks_completed.append('RSEM ' + str(datetime.datetime.now()))
-    print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    return exp
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq['Folder'],sample=sample)
+                    bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
+                    wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                    plot_model='rsem-plot-model {sample} {sample}.models.pdf'
+
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    align,
+                                    bam2wig,
+                                    wig2bw,
+                                    plot_model
+                                    ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                                job_name= sample + '_RSEM',
+                                                job_log_folder=exp.job_folder,
+                                                q= 'bigmem',
+                                                mem=60000
+                                                )
+                                      )
+            elif exp.genome.lower() =='mm10':
+                #Submit RSEM-STAR for each sample
+                for number,sample in exp.samples.items():
+                    print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq['Folder'],sample=sample)
+                    bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
+                    wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                    plot_model='rsem-plot-model {sample} {sample}.models.pdf'
+
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    align,
+                                    bam2wig,
+                                    wig2bw,
+                                    plot_model
+                                    ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                                job_name= sample + '_RSEM',
+                                                job_log_folder=exp.job_folder,
+                                                q= 'bigmem',
+                                                mem=60000
+                                                )
+                                     )
+            else:
+                print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
+                filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+                experiment = open(filename, 'w') 
+                pickle.dump(exp, experiment)
+                raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
+
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+             
+            #make RSEM_results folder
+            os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
+            
+            #move results to folder        
+            results = glob.glob(exp.scratch + '*.models.pdf')
+            results.append(glob.glob(exp.scratch + '*.genes.results'))
+            results.append(glob.glob(exp.scratch + '*.isoforms.results'))
+            results.append(glob.glob(exp.scratch + '*.genome.sorted.bam'))
+            results.append(glob.glob(exp.scratch + '*.genome.sorted.bam.bai'))
+            results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
+            for file in results:
+                copy2(file,exp.scratch + 'RSEM_results/')
+
+            exp.tasks_completed.append('RSEM')
+            print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            return exp
+        
+        except:
+            print('Error during STAR/RSEM alignment.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error during STAR/RSEM alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
 def kallisto(exp):
     
-    print('Beginning Kallisto alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    
-    #make Kallisto_results folder
-    os.makedirs(exp.scratch + 'Kallisto_results/', exist_ok=True)
-    
-    if exp.genome == 'hg38':
-        #Submit kallisto for each sample
-        for number,sample in exp.samples.items():
-            print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+    if 'Kallisto' in exp.tasks_completed:
+        return
 
-            align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq['Folder'],sample=sample)
-
-            command_list = ['module rm python',
-                            'module rm perl',
-                            'source activate RNAseq',
-                            align
-                            ]
-
-            exp.job_id.append(send_job(command_list=command_list, 
-                                        job_name= sample + '_Kallisto',
-                                        job_log_folder=exp.job_folder,
-                                        q= 'bigmem',
-                                        mem=60000
-                                        )
-                              )
     else:
-        ## MM10 here.
-        raise ValueError("This pipeline is not set up for mm10.")
+        try:
+            print('Beginning Kallisto alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            #make Kallisto_results folder
+            os.makedirs(exp.scratch + 'Kallisto_results/', exist_ok=True)
+            
+            if exp.genome == 'hg38':
+                #Submit kallisto for each sample
+                for number,sample in exp.samples.items():
+                    print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-    #Wait for jobs to finish
-    for rand_id in exp.job_id:
-        job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-    
-    exp.tasks_completed.append('Kallisto ' + str(datetime.datetime.now()))
-    
-    return exp
+                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq['Folder'],sample=sample)
+
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    align
+                                    ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                                job_name= sample + '_Kallisto',
+                                                job_log_folder=exp.job_folder,
+                                                q= 'bigmem',
+                                                mem=60000
+                                                )
+                                      )
+            elif exp.genome == 'mm10':
+                #Submit kallisto for each sample
+                for number,sample in exp.samples.items():
+                    print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+
+                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/KallistoIndex/GRCm38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq['Folder'],sample=sample)
+
+                    command_list = ['module rm python',
+                                    'module rm perl',
+                                    'source activate RNAseq',
+                                    align
+                                    ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                                job_name= sample + '_Kallisto',
+                                                job_log_folder=exp.job_folder,
+                                                q= 'bigmem',
+                                                mem=60000
+                                                )
+                                      )
+
+            else:
+                print('Error in kallisto, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
+                filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+                experiment = open(filename, 'w') 
+                pickle.dump(exp, experiment)
+                raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
+
+            #Wait for jobs to finish
+            for rand_id in exp.job_id:
+                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            
+            exp.tasks_completed.append('Kallisto')
+            
+            return exp
+
+        except:
+            print('Error during Kallisto alignment.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            experiment = open(filename, 'w') 
+            pickle.dump(exp, experiment)
+            raise Error('Error during Kallisto alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
 
 def align(exp):
@@ -771,7 +901,7 @@ def align(exp):
     exp=spike(exp)
     exp=rsem(exp)
     exp=kalliso(exp)
-    
+
     return exp
 
 
@@ -811,13 +941,11 @@ def count_matrix(exp):
     counts.columns = columns
     
     exp.count_matrix = counts
-    exp.tasks_completed.append('Count_Matrix ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('Count_Matrix')
     print('Sample count matrix complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     return exp
     
-
-
 def DESeq2(exp):
         
     '''
@@ -884,7 +1012,7 @@ def DESeq2(exp):
                                                    sep="\t"
                                                   )
         
-    exp.tasks_completed.append('DESeq2 ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('DESeq2')
     print('DESeq2 differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     return exp
@@ -910,7 +1038,7 @@ def clustermap(exp):
         CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.png'.format(comparison=comparison), dpi=200)
         CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.svg'.format(comparison=comparison), dpi=200)
     
-    exp.tasks_completed.append('DESeq2_Heatmaps ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('DESeq2_Heatmaps')
     print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     return exp
@@ -954,7 +1082,7 @@ def enrichr_de(exp):
                           )
                 
     
-    exp.tasks_completed.append('Enrichr_DE ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('Enrichr_DE')
     print('Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     return exp
@@ -985,7 +1113,7 @@ def GSEA(exp):
         print('Beginning GSEA:Perturbation enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cgp.v6.1.symbols.gmt', outdir=out_dir)
 
-    exp.tasks_completed.append('GSEA_DESeq2 ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('GSEA_DESeq2')
     print('GSEA for DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     return exp
@@ -1027,11 +1155,10 @@ def PCA(exp):
         ax.figure.savefig(out_dir, '{comparison}_PCA.png'.format(comparison=comparison))
         ax.figure.savefig(out_dir, '{comparison}_PCA.svg'.format(comparison=comparison))
 
-    exp.tasks_completed.append('PCA ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('PCA')
     print('PCA for DESeq2 groups complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
     return exp
-
 
 def diff_exp(exp):
     
@@ -1125,11 +1252,10 @@ def overlaps(exp):
                        gene_sets='GO_Molecular_Function_2017b', 
                        outdir=out_dir
                       )
-    exp.tasks_completed.append('Overlaps ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('Overlaps')
     print('Overlap analysis complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                    
     return exp
-
 
 def final_qc(exp):
     
@@ -1152,7 +1278,7 @@ def final_qc(exp):
     for rand_id in exp.job_id:
         job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
     
-    exp.tasks_completed.append('MultiQC ' + str(datetime.datetime.now()))
+    exp.tasks_completed.append('MultiQC')
     
     return exp
 
@@ -1160,12 +1286,11 @@ def final_qc(exp):
 def finish(exp):
     
     import watermark
-    import pickle
     ## add wattermark, python and r versions to exp.
     ## print them here.
     
     filename= '{out}{name}_{date}.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-    experiment = open(filename, 'a') 
+    experiment = open(filename, 'w') 
     pickle.dump(exp, experiment) 
     
     #move all files from scratch to out directory

@@ -1,7 +1,7 @@
 Name: 'Experiment_Name' #Experiment name
 Rundate: '2017-10-31' #Run Date
 Genome: hg38 #or mm10
-Output_directory: /projects/ctsi/nimerlab/to/directory/ #Enter output directory here eg. .../Results"
+Output_directory: /projects/ctsi/nimerlab/to/directory/ #Enter output directory here eg. .../Results/"
 ERCC_spike: yes # yes if ERCC spike-ins used.  Will normalized based on spike-in instead of DESeq2
 Total_sample_number: 12 #Total number
 Samples: #Fastq folders MUST have '*-xx-*' (ex. *-01-* ) in the folder name from BaseSpace Download  
