@@ -33,6 +33,8 @@ To do:
 '''
 
 import os,re,datetime,glob
+from shutil import copy2,copytree,rmtree
+import subprocess as sub
 version=0.1
 
 #### Parse Experimental File
@@ -309,7 +311,7 @@ def parse_yaml():
 # Sends job to LSF resource manager queues
 def send_job(command_list, job_name, job_log_folder, q, mem):
     
-    import os,re,random
+    import random
     
     os.makedirs(job_log_folder, exist_ok=True)
 
@@ -392,9 +394,6 @@ def fastq_cat(exp):
 # Stages experiment in a scratch folder
 def stage(exp):
     
-    import subprocess as sub
-    from shutil import copytree,rmtree
-    
     set_temp='/scratch/projects/nimerlab/tmp'
     sub.run('export TMPDIR=' + set_temp, shell=True)
     print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
@@ -422,10 +421,8 @@ def stage(exp):
 
 def fastqc(exp):
     
-    from shutil import move
-    
     print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
-    
+
     #Make QC folder
     exp.qc_folder = exp.fastq['Folder'] + 'qc/'
     os.makedirs(exp.qc_folder, exist_ok=True)
@@ -473,7 +470,8 @@ def fastqc(exp):
     #move to qc folder
     fastqc_files = glob.glob(exp.fastq['Folder'] + '*.zip')
     for f in fastqc_files:
-        move(f,exp.qc_folder)
+        copy2(f,exp.qc_folder)
+        rmtree(f)
      
     exp.tasks_completed.append('FastQC ' + str(datetime.datetime.now()))
     
@@ -483,8 +481,6 @@ def fastqc(exp):
 
 
 def fastq_screen(exp):
-    
-    from shutil import move
     
     print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
@@ -518,7 +514,8 @@ def fastq_screen(exp):
     #move to qc folder        
     fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
     for f in fastqs_files:
-        move(f,exp.qc_folder)
+        copy2(f,exp.qc_folder)
+        rmtree(f)
 
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
@@ -530,7 +527,7 @@ def fastq_screen(exp):
 
 # Trimming based on standard UM SCCC Core Nextseq 500 technical errors
 def trim(exp):
-    
+
     print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
     #change to experimental directory in scratch
@@ -542,14 +539,12 @@ def trim(exp):
         
         trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample) 
         skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
-        remove='rm {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
 
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
                         trim_galore,
-                        skewer,
-                        remove
+                        skewer
                        ]
 
         exp.job_id.append(send_job(command_list=command_list, 
@@ -578,8 +573,9 @@ def trim(exp):
     logs = glob.glob(exp.fastq['Folder'] + '*.txt')
     logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
     for l in logs:
-        move(l,exp.qc_folder) 
-    
+        copy2(l,exp.qc_folder) 
+        rmtree(l)
+
     exp.trimmed = True
 
     #change to experimental directory in scratch
@@ -634,7 +630,8 @@ def spike(exp):
         os.makedirs(exp.scratch + 'ERCC/', exist_ok=True)
         files = glob.glob(exp.scratch + '*ERCC*.tab')
         for file in files:
-            move(file,exp.scratch + 'ERCC/')
+            copy2(file,exp.scratch + 'ERCC/')
+            rmtree(file)
         
         ### Generate one matrix for all spike_counts
         matrix='rsem-generate-data-matrix '
@@ -727,7 +724,8 @@ def rsem(exp):
     results.append(glob.glob(exp.scratch + '*.genome.sorted.bam.bai'))
     results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
     for file in results:
-        move(file,exp.scratch + 'RSEM_results/')
+        copy2(file,exp.scratch + 'RSEM_results/')
+        rmtree(file)
 
     exp.tasks_completed.append('RSEM ' + str(datetime.datetime.now()))
     print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1169,7 +1167,6 @@ def finish(exp):
     
     import watermark
     import pickle
-    import shutil
     ## add wattermark, python and r versions to exp.
     ## print them here.
     
@@ -1179,7 +1176,7 @@ def finish(exp):
     
     #move all files from scratch to out directory
     
-    shutil.move(exp.scratch, exp.outdir)
+    copytree(exp.scratch, exp.outdir)
     
     print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
     print(str(exp.tasks_completed) + '\n', file=open(exp.log_file, 'a'))
