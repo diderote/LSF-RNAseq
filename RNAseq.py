@@ -30,21 +30,87 @@ To do:
     - fastq cat (cat.py preliminary)
     - start and stop points
     - finish pick up where left off
-    - finish exception pickle.dumps
 
 
 '''
 
-import os,re,datetime,glob, pickle
+import os,re,datetime,glob,pickle
 from shutil import copy2,copytree,rmtree
 import subprocess as sub
+import pandas as pd
 version=0.1
+
+### Make experiment class
+class Experiment(object):
+     def __init__(self, scratch, date, name, out_dir, job_folder, qc_folder, 
+                  log_file,start,fastq_folder,fastq_start,spike,trimmed,
+                  count_matrix,spike_counts,stop,genome,sample_number, 
+                  samples, job_id,de_groups,norm,designs, overlaps,
+                  tasks_completed,de_results,sig_lists,overlap_results
+                 ):
+        self.scratch = scratch
+        self.date = date
+        self.name = name
+        self.out_dir =out_dir
+        self.job_folder=job_folder
+        self.qc_folder=qc_folder
+        self.log_file=log_file
+        self.start=start
+        self.fastq_folder=fastq_folder
+        self.fastq_start = fastq_start
+        self.spike = spike
+        self.trimmed = trimmed
+        self.count_matrix = count_matrix
+        self.spike_counts = spike_counts
+        self.stop = stop
+        self.genome = genome
+        self.sample_number =sample_number
+        self.samples = samples
+        self.job_id=job_id
+        self.de_groups = de_groups
+        self.norm = norm
+        self.designs=designs
+        self.overlaps = overlaps
+        self.tasks_completed=tasks_completed
+        self.de_results = de_results
+        self.sig_lists=sig_lists
+        self.overlap_results=overlap_results
+
+def new_experiment():
+    experiment = Experiment(scratch = '',
+                            date = '',
+                            name = '',
+                            out_dir ='',
+                            job_folder='',
+                            qc_folder='',
+                            log_file='',
+                            start='',
+                            fastq_folder='',
+                            fastq_start = False,
+                            spike = False,
+                            trimmed = False,
+                            count_matrix = pd.DataFrame(),
+                            spike_counts = pd.DataFrame(),
+                            stop = '',
+                            genome = '',
+                            sample_number = {},
+                            samples={},
+                            job_id=[],
+                            de_groups = {},
+                            norm = 'bioinformatic',
+                            designs={},
+                            overlaps = {},
+                            tasks_completed=[],
+                            de_results = {},
+                            sig_lists={},
+                            overlap_results={}
+                           )
+    return experiment
 
 #### Parse Experimental File
 def parse_yaml():
     
     import argparse,yaml
-    import pandas as pd
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
@@ -55,8 +121,8 @@ def parse_yaml():
     yml=yaml.safe_load(exp_input)
     exp_input.close()
 
-    #Create an new object to store experimental variables
-    exp = type('', (), {})()
+    #Make a new experimental object
+    exp = new_experiment()
     
     #Setting Scratch folder
     exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/' + yml['Name'] + '/'
@@ -70,7 +136,8 @@ def parse_yaml():
     filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
     
     if os.path.isfile(filename):
-        exp = pickle.load(filename)
+        with open(filename, 'rb') as experiment:
+            exp = pickle.load(experiment)
         os.remove(filename)
         return exp 
 
@@ -99,12 +166,11 @@ def parse_yaml():
             print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
        
         #Start Fastq
-        exp.fastq = {'Run': False}
         if yml['Startpoint']['Fastq']['Start']:
-            exp.fastq['Run'] = True
-            exp.fastq['catenated']=yml['Startpoint']['Fastq']['Pre-combined']
+            exp.fastq_start = True
+            exp.fastq_precat=yml['Startpoint']['Fastq']['Pre-combined']
             if os.path.isdir(yml['Startpoint']['Fastq']['Fastq_directory']):
-                exp.fastq['Folder']=yml['Startpoint']['Fastq']['Fastq_directory']
+                exp.fastq_folder=yml['Startpoint']['Fastq']['Fastq_directory']
             else:
                 raise IOError("Can't Find Fastq Folder.")
 
@@ -112,24 +178,16 @@ def parse_yaml():
         exp.spike = False
         if yml['ERCC_spike']:
             exp.spike = True
-            
-        #Initialize trimmed
-        exp.trimmed = False
                 
         #Start Bam
-        exp.bam = {'Run': False}
-        if yml['Startpoint']['Bam']['Start']:
-            exp.bam['Run'] = True
+        if exp.start == 'Bam':
             if os.path.isdir(yml['Startpoint']['Bam']['Bam_folder']):
-                exp.bam['Folder'] = yml['Startpoint']['Bam']['Bam_folder']
+                exp.bam_folder = yml['Startpoint']['Bam']['Bam_folder']
             else: 
-                raise IOError("Can't Find Bam Folder.")    
-            print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
+                raise IOError("Can't Find Bam Folder.")
 
         #Start Gene Counts
-        exp.counts = {'Run': False}
-        if yml['Startpoint']['Gene_Counts']['Start']:
-            exp.counts['Run'] = True
+        if exp.start == 'Counts':
             if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
                 exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
                                                header= 0, index_col=0, sep="\t")
@@ -149,10 +207,10 @@ def parse_yaml():
             print('Pipeline stopping after full analysis.'+ '\n', file=open(exp.log_file, 'a'))
         
         #Genome
-        if yml['Genome'] not in ['hg38', 'mm10']:
+        if yml['Genome'].lower() not in ['hg38', 'mm10']:
             raise ValueError("Genome must be either hg38 or mm10.")
         else:
-            exp.genome = yml['Genome']
+            exp.genome = yml['Genome'].lower()
             print('Processing data with: ' + str(exp.genome)+ '\n', file=open(exp.log_file, 'a'))
         
         #Counts
@@ -163,7 +221,6 @@ def parse_yaml():
             print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
         
         #Sample Names
-        exp.samples = {}
         count = 1
         for key,name in yml['Samples'].items():
             if count <= exp.sample_number:
@@ -174,9 +231,6 @@ def parse_yaml():
         print("Samples: "+ '\n', file=open(exp.log_file, 'a'))
         print(str(exp.samples) + '\n', file=open(exp.log_file, 'a'))
         
-        #Initialize Job_ID list
-        exp.job_id=[]
-        
         #Out Folder
         os.makedirs(exp.out_dir, exist_ok=True)
         print("Pipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
@@ -185,7 +239,6 @@ def parse_yaml():
         if exp.stop == 'Alignment':
             pass
         else: 
-            exp.de_groups = {}
             for key, item in yml['Differential_Expression_Groups'].items():
                 if item == None:
                     pass
@@ -202,7 +255,6 @@ def parse_yaml():
             print("Parsing experimental design for differential expression..."+ '\n', file=open(exp.log_file, 'a'))
             
             #Normalization method
-            exp.norm = 'bioinformatic'
             if yml['Differential_Expression_Normalizaiton'] == 'ERCC':
                 exp.norm = 'ERCC'
                 print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
@@ -211,7 +263,6 @@ def parse_yaml():
             else:
                 print("I don't know the " + yml['Differential_Expression_Normalizaiton'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
         
-            exp.designs={}
             for key, comparison in yml['Differential_Expression_Comparisons'].items():
                 if comparison == None:
                     pass
@@ -297,7 +348,6 @@ def parse_yaml():
                         raise ValueError(error)
         
         #DE overlaps
-        exp.overlaps = {}
         if yml['Overlaps'] == None:
             print('There are no overlaps to process for muliptle differential expression analyses.'+ '\n', file=open(exp.log_file, 'a'))
             exp.run_overlap = False
@@ -312,7 +362,7 @@ def parse_yaml():
             print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
             
         #Initialized Process Complete List
-        exp.tasks_completed=['Parsed']
+        exp.tasks_completed.append('Parsed')
         
         print('Experiment file parsed: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
@@ -418,12 +468,12 @@ def stage(exp):
         #Copy Fastq to scratch fastq folder
         if os.path.exists(exp.scratch + 'Fastq'):
             rmtree(exp.scratch + 'Fastq')
-        copytree(exp.fastq['Folder'], exp.scratch + 'Fastq')
+        copytree(exp.fastq_folder, exp.scratch + 'Fastq')
 
         #change to experimental directory in scratch
         os.chdir(exp.scratch)
         
-        exp.fastq['Folder']= exp.scratch + 'Fastq/'
+        exp.fastq_folder= exp.scratch + 'Fastq/'
         
         exp.tasks_completed.append('Stage')
         
@@ -441,7 +491,7 @@ def fastqc(exp):
             print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
 
             #Make QC folder
-            exp.qc_folder = exp.fastq['Folder'] + 'qc/'
+            exp.qc_folder = exp.fastq_folder + 'qc/'
             os.makedirs(exp.qc_folder, exist_ok=True)
             
             #Submit fastqc and fastq_screen jobs for each sample
@@ -451,7 +501,7 @@ def fastqc(exp):
                     command_list = ['module rm python',
                                     'module rm perl',
                                     'source activate RNAseq',
-                                    'fastqc ' + exp.fastq['Folder'] + sample + '*',
+                                    'fastqc ' + exp.fastq_folder + sample + '*',
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
@@ -467,7 +517,7 @@ def fastqc(exp):
                     command_list = ['module rm python',
                                     'module rm perl',
                                     'source activate RNAseq',
-                                    'fastqc ' + exp.fastq['Folder'] + sample + '_trim_*',
+                                    'fastqc ' + exp.fastq_folder + sample + '_trim_*',
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
@@ -485,9 +535,10 @@ def fastqc(exp):
                 job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
             
             #move to qc folder
-            fastqc_files = glob.glob(exp.fastq['Folder'] + '*.zip')
+            fastqc_files = glob.glob(exp.fastq_folder + '*.zip')
             for f in fastqc_files:
                 copy2(f,exp.qc_folder)
+                os.remove(f)
              
             exp.tasks_completed.append('FastQC')
             
@@ -498,8 +549,8 @@ def fastqc(exp):
         except:
             print('Error in FastQC.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error in FastQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def fastq_screen(exp):
@@ -513,18 +564,18 @@ def fastq_screen(exp):
             print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             #Make QC folder
-            exp.qc_folder = exp.fastq['Folder'] + 'qc/'
+            exp.qc_folder = exp.fastq_folder + 'qc/'
             os.makedirs(exp.qc_folder, exist_ok=True)
 
             #change to experimental directory in scratch
-            os.chdir(exp.fastq['Folder'])
+            os.chdir(exp.fastq_folder)
             
             #Submit fastqc and fastq_screen jobs for each sample
             for number,sample in exp.samples.items():
                 command_list = ['module rm python',
                                 'module rm perl',
                                 'source activate RNAseq',
-                                'fastq_screen --aligner bowtie2 ' + exp.fastq['Folder'] + sample + '_R1.fastq.gz'
+                                'fastq_screen --aligner bowtie2 ' + exp.fastq_folder + sample + '_R1.fastq.gz'
                                ]
 
                 exp.job_id.append(send_job(command_list=command_list, 
@@ -540,9 +591,10 @@ def fastq_screen(exp):
                 job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
             
             #move to qc folder        
-            fastqs_files = glob.glob(exp.fastq['Folder'] + '*screen*')
+            fastqs_files = glob.glob(exp.fastq_folder + '*screen*')
             for f in fastqs_files:
                 copy2(f,exp.qc_folder)
+                os.remove(f)
 
             #change to experimental directory in scratch
             os.chdir(exp.scratch)
@@ -554,8 +606,8 @@ def fastq_screen(exp):
         except:
             print('Error in Fastq Screen.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error in Fastq_screen. Fix problem then resubmit with same command to continue from last completed step.')
 
 # Trimming based on standard UM SCCC Core Nextseq 500 technical errors
@@ -569,14 +621,14 @@ def trim(exp):
             print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 
             #change to experimental directory in scratch
-            os.chdir(exp.fastq['Folder'])
+            os.chdir(exp.fastq_folder)
 
             #Submit fastqc and fastq_screen jobs for each sample
             for number,sample in exp.samples.items():
                 print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
                 
-                trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample) 
-                skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+                trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) 
+                skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq_folder,sample=sample)
 
                 command_list = ['module rm python',
                                 'module rm perl',
@@ -599,19 +651,20 @@ def trim(exp):
             
             
             for number,sample in exp.samples.items():
-                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
-                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
                          )
                 
-                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample),
-                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq['Folder'],sample=sample)
+                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
                          )
             
             #move logs to qc folder        
-            logs = glob.glob(exp.fastq['Folder'] + '*.txt')
-            logs = logs + glob.glob(exp.fastq['Folder'] + '*.log')
+            logs = glob.glob(exp.fastq_folder + '*.txt')
+            logs = logs + glob.glob(exp.fastq_folder + '*.log')
             for l in logs:
                 copy2(l,exp.qc_folder) 
+                os.remove(l)
 
             exp.trimmed = True
 
@@ -624,8 +677,8 @@ def trim(exp):
         except:
             print('Error in trimming.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error during trimming. Fix problem then resubmit with same command to continue from last completed step.')
 
 def preprocess(exp):
@@ -635,6 +688,7 @@ def preprocess(exp):
     exp=fastq_screen(exp)
     exp=trim(exp)
     exp=fastqc(exp)  
+    
     return exp
 
 def spike(exp):
@@ -650,7 +704,7 @@ def spike(exp):
             for number,sample in exp.samples.items():
                 print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                spike='STAR --runThreadN 10 --genomeDIR /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(loc=exp.fastq['Folder'],sample=sample)
+                spike='STAR --runThreadN 10 --genomeDir /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(loc=exp.fastq_folder,sample=sample)
 
                 command_list = ['module rm python',
                                 'module rm perl',
@@ -675,12 +729,13 @@ def spike(exp):
             files = glob.glob(exp.scratch + '*ERCC*.tab')
             for file in files:
                 copy2(file,exp.scratch + 'ERCC/')
+                os.remove(file)
             
             ### Generate one matrix for all spike_counts
             matrix='rsem-generate-data-matrix '
             columns=[]
             for number,sample in exp.samples.items():
-                matrix = matrix + exp.scratch + 'ERCC/' + '{loc}{sample}_ERCCReadsPerGene.out.tab '.format(loc=exp.scratch + 'ERCC/', sample=sample)
+                matrix = matrix + '{loc}{sample}_ERCCReadsPerGene.out.tab '.format(loc=exp.scratch + 'ERCC/', sample=sample)
                 columns.append(sample)
             
             matrix = matrix + '> {loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/')
@@ -702,19 +757,25 @@ def spike(exp):
             for rand_id in exp.job_id:
                 job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
             
-            exp.spike_counts = pd.read_csv('{loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/'),
-                                           header=0,
-                                           index_col=0,
-                                           sep="\t"
-                                          )
+            try:
+                exp.spike_counts = pd.read_csv('{loc}ERCC.count.matrix'.format(loc=exp.scratch + 'ERCC/'),
+                                               header=0,
+                                               index_col=0,
+                                               sep="\t")
+            except:
+                print('Error loading spike_counts.', file=open(exp.log_file,'a'))
+                filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+                with open(filename, 'wb') as experiment:
+                    pickle.dump(exp, experiment)
+                raise Error('Error loading spike_counts. Make sure the file is not empty.')
             
             print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
         except:
             print('Error in spike-in processing.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error during ERCC spike-in processing. Fix problem then resubmit with same command to continue from last completed step.')
 
     else:
@@ -732,12 +793,12 @@ def rsem(exp):
         try:    
             print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
-            if exp.genome.lower() == 'hg38':
+            if exp.genome == 'hg38':
                 #Submit RSEM-STAR for each sample
                 for number,sample in exp.samples.items():
                     print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq['Folder'],sample=sample)
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
                     bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
                     wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
                     plot_model='rsem-plot-model {sample} {sample}.models.pdf'
@@ -758,12 +819,12 @@ def rsem(exp):
                                                 mem=60000
                                                 )
                                       )
-            elif exp.genome.lower() =='mm10':
+            elif exp.genome =='mm10':
                 #Submit RSEM-STAR for each sample
                 for number,sample in exp.samples.items():
                     print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq['Folder'],sample=sample)
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
                     bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
                     wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
                     plot_model='rsem-plot-model {sample} {sample}.models.pdf'
@@ -787,8 +848,8 @@ def rsem(exp):
             else:
                 print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
                 filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                experiment = open(filename, 'w') 
-                pickle.dump(exp, experiment)
+                with open(filename, 'wb') as experiment:
+                    pickle.dump(exp, experiment)
                 raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
 
             #Wait for jobs to finish
@@ -807,6 +868,7 @@ def rsem(exp):
             results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
             for file in results:
                 copy2(file,exp.scratch + 'RSEM_results/')
+                os.remove(file)
 
             exp.tasks_completed.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -816,8 +878,8 @@ def rsem(exp):
         except:
             print('Error during STAR/RSEM alignment.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error during STAR/RSEM alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
 def kallisto(exp):
@@ -837,7 +899,7 @@ def kallisto(exp):
                 for number,sample in exp.samples.items():
                     print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq['Folder'],sample=sample)
+                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq_folder,sample=sample)
 
                     command_list = ['module rm python',
                                     'module rm perl',
@@ -857,7 +919,7 @@ def kallisto(exp):
                 for number,sample in exp.samples.items():
                     print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/KallistoIndex/GRCm38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq['Folder'],sample=sample)
+                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/KallistoIndex/GRCm38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq_folder,sample=sample)
 
                     command_list = ['module rm python',
                                     'module rm perl',
@@ -876,8 +938,8 @@ def kallisto(exp):
             else:
                 print('Error in kallisto, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
                 filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                experiment = open(filename, 'w') 
-                pickle.dump(exp, experiment)
+                with open(filename, 'wb')  as experiment:
+                    pickle.dump(exp, experiment)
                 raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
 
             #Wait for jobs to finish
@@ -891,8 +953,8 @@ def kallisto(exp):
         except:
             print('Error during Kallisto alignment.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            experiment = open(filename, 'w') 
-            pickle.dump(exp, experiment)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
             raise Error('Error during Kallisto alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
 
@@ -906,8 +968,6 @@ def align(exp):
 
 
 def count_matrix(exp):
-    
-    import pandas as pd
     
     print('Generating Sample Matrix from RSEM.gene.results: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
@@ -954,7 +1014,6 @@ def DESeq2(exp):
     
     print('Beginning DESeq2 differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
-    import pandas as pd
     import numpy as np
     import rpy2.robjects as ro
     ro.pandas2ri.activate()
@@ -967,7 +1026,6 @@ def DESeq2(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     count_matrix = exp.count_matrix
-    exp.de_results = {}
     dds={}
     
     for comparison,design in exp.design.items():
@@ -989,7 +1047,7 @@ def DESeq2(exp):
             ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
             ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
             sizeFactors=robjects.r("sizeFactors")
-            dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(exp.ERCC_size)
+            dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
             dds[comparison] = deseq.DESeq(dds[comparison])
         
         #DESeq2 results
@@ -1020,7 +1078,6 @@ def DESeq2(exp):
 
 def clustermap(exp):
     
-    import pandas as pd
     import seaborn as sns
     
     os.makedirs(exp.scratch + 'DESeq2_results/Heatmaps/', exist_ok=True)
@@ -1045,7 +1102,6 @@ def clustermap(exp):
 
 
 def enrichr_de(exp):
-    import pandas as pd
     import gseapy
     
     out_dir = exp.scratch + 'DESeq2_results/enrichr'
@@ -1057,7 +1113,6 @@ def enrichr_de(exp):
         results=exp.de_results[comparison]
         results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
         
-        exp.sig_lists={}
         exp.sig_lists[comparison] = {}
         exp.sig_lists[comparison]['2FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > 1)].gene_name.tolist())
         exp.sig_lists[comparison]['2FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
@@ -1090,7 +1145,6 @@ def enrichr_de(exp):
 
 def GSEA(exp):
     
-    import pandas as pd
     import geseapy
     
     out_dir = exp.scratch + 'DESeq2_results/GSEA'
@@ -1121,7 +1175,6 @@ def GSEA(exp):
 
 def PCA(exp):
     
-    import pandas as pd
     from sklearn.decomposition import PCA
     import matplotlib.pyplot as plt 
     import matplotlib.patches as mpatches
@@ -1212,13 +1265,11 @@ def plot_venn2(Series, string_name_of_overlap, folder):
 
 def overlaps(exp):
     
-    import pandas as pd
     import gseapy
     
     out_dir = exp.scratch + 'Overlaps/'
     os.makedirs(out_dir, exist_ok=True)
     
-    exp.overlap_results={}
     names=['2FC_UP', '2FC_DN', '15FC_UP','15FC_DN']
       
     print('Beginning overlap of significant genes: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1290,8 +1341,8 @@ def finish(exp):
     ## print them here.
     
     filename= '{out}{name}_{date}.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-    experiment = open(filename, 'w') 
-    pickle.dump(exp, experiment) 
+    with open(filename, 'wb') as experiment:
+        pickle.dump(exp, experiment) 
     
     #move all files from scratch to out directory
     
@@ -1309,7 +1360,6 @@ exp = parse_yaml()
 exp = preprocess(exp)
 exp = align(exp)
 exp = diff_exp(exp) #finetune for cluster map
-if exp.run_overlap:
-    exp=Overlaps(exp)
+exp = Overlaps(exp)
 exp = final_qc(exp)
 finish(exp)
