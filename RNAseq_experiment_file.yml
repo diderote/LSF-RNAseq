@@ -39,9 +39,6 @@ Startpoint:
     Start: yes #default
     Pre-combined: yes #default  Fastq files have been combined and all exists in one folder in the format xxx-01-xxx_R1.fastq.gz or xxx-01-xxx_R2.fastq.gz
     Fastq_directory: / #/projects/ctsi/nimerlab/to/directory/ #Enter Fastq parent directory here if raw, or actual directory if processed.
-  Bam:
-    Start: no #start from bam.
-    Bam_folder: /path/to/bam/folder/ #Make sure '-xx-' in the bam title and all bams are in the same folder
   Gene_Counts:
     Start: no #start from count matrix
     Count_matrix_location: /path/to/count/matrix.txt #Path to count matrix file with sample name in header from 01-18

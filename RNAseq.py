@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 # coding: utf-8
 
@@ -27,11 +26,6 @@ Requires a conda environment 'RNAseq' made from RNAseq.yml
 To do:
     - Set up sleuth
     - set analyses for mm10 (convert string)
-    - fastq cat (cat.py preliminary)
-    - start and stop points
-    - finish pick up where left off
-    - RSEM from bam
-
 
 '''
 
@@ -47,7 +41,7 @@ class Experiment(object):
                   log_file,start,fastq_folder,fastq_start,spike,trimmed,
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
-                  tasks_completed,de_results,sig_lists,overlap_results
+                  tasks_complete,de_results,sig_lists,overlap_results,
                  ):
         self.scratch = scratch
         self.date = date
@@ -72,7 +66,7 @@ class Experiment(object):
         self.norm = norm
         self.designs=designs
         self.overlaps = overlaps
-        self.tasks_completed=tasks_completed
+        self.tasks_complete=tasks_complete
         self.de_results = de_results
         self.sig_lists=sig_lists
         self.overlap_results=overlap_results
@@ -101,10 +95,10 @@ def new_experiment():
                             norm = 'bioinformatic',
                             designs={},
                             overlaps = {},
-                            tasks_completed=[],
+                            tasks_complete=[],
                             de_results = {},
                             sig_lists={},
-                            overlap_results={}
+                            overlap_results={},
                            )
     return experiment
 
@@ -161,18 +155,21 @@ def parse_yaml():
         #Start Point
         start=[]
         if yml['Startpoint']['Fastq']['Start'] : start.append('Fastq') 
-        if yml['Startpoint']['Bam']['Start'] : start.append('Bam')
         if yml['Startpoint']['Gene_Counts']['Start'] : start.append('Counts')
         if len(start) != 1:
             raise ValueError("There are more than one startpoints in this experimental file.  Please fix the file and resubmit.")
         else:
             exp.start = start[0]
             print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
+
+        if exp.start == 'Counts':
+            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix']
        
         #Start Fastq
         if yml['Startpoint']['Fastq']['Start']:
             exp.fastq_start = True
-            exp.fastq_precat=yml['Startpoint']['Fastq']['Pre-combined']
+            if yml['Startpoint']['Fastq']['Pre-combined']:
+                exp.tasks_complete.append('Fastq_cat')
             if os.path.isdir(yml['Startpoint']['Fastq']['Fastq_directory']):
                 exp.fastq_folder=yml['Startpoint']['Fastq']['Fastq_directory']
             else:
@@ -182,13 +179,6 @@ def parse_yaml():
         exp.spike = False
         if yml['ERCC_spike']:
             exp.spike = True
-                
-        #Start Bam
-        if exp.start == 'Bam':
-            if os.path.isdir(yml['Startpoint']['Bam']['Bam_folder']):
-                exp.bam_folder = yml['Startpoint']['Bam']['Bam_folder']
-            else: 
-                raise IOError("Can't Find Bam Folder.")
 
         #Start Gene Counts
         if exp.start == 'Counts':
@@ -202,9 +192,11 @@ def parse_yaml():
         #End Point
         if yml['Stop']['Alignment']:
             exp.stop = 'Alignment'
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Stop']['Differential_Expression']:
             exp.stop = 'DE'
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after differential expression analysis.'+ '\n', file=open(exp.log_file, 'a'))
         else:
             exp.stop = 'END'
@@ -366,8 +358,7 @@ def parse_yaml():
             print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
             
         #Initialized Process Complete List
-        exp.tasks_completed.append('Parsed')
-        
+        exp.tasks_complete.append('Parsed')
 
         print('Experiment file parsed: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
@@ -449,7 +440,7 @@ def job_wait(rand_id, job_log_folder):
 def fastq_cat(exp):
     
     
-    if 'Fastq_cat' in exp.tasks_completed:
+    if 'Fastq_cat' in exp.tasks_complete:
         return exp
 
     else:
@@ -480,14 +471,17 @@ def fastq_cat(exp):
         
         rmtree(exp.fastq_folder + 'temp/')
 
-        exp.tasks_completed.append('Fastq_cat')
-        '''
+        exp.tasks_complete.append('Fastq_cat')
         return exp
+        '''
+        print('Pipeline not set up to handle fastq merging yet.', file=open(exp.log_file,'a'))
+        raise RaiseError('Pipeline not set up to handle fastq merging yet.  Use "cat file1 file2 > final_file" to manually merge then restart.')
+
 
 # Stages experiment in a scratch folder
 def stage(exp):
     
-    if 'Stage' in exp.tasks_completed:
+    if 'Stage' in exp.tasks_complete:
         return exp
 
     else:
@@ -510,7 +504,7 @@ def stage(exp):
         
         exp.fastq_folder= exp.scratch + 'Fastq/'
         
-        exp.tasks_completed.append('Stage')
+        exp.tasks_complete.append('Stage')
         
         print('Staging complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
@@ -518,7 +512,7 @@ def stage(exp):
 
 def fastqc(exp):
     
-    if 'FastQC' in exp.tasks_completed:
+    if 'FastQC' in exp.tasks_complete:
         return exp
 
     else:
@@ -575,7 +569,7 @@ def fastqc(exp):
                 copy2(f,exp.qc_folder)
                 os.remove(f)
              
-            exp.tasks_completed.append('FastQC')
+            exp.tasks_complete.append('FastQC')
             
             print('FastQC complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
@@ -590,7 +584,7 @@ def fastqc(exp):
 
 def fastq_screen(exp):
     
-    if 'Fastq_screen' in exp.tasks_completed:
+    if 'Fastq_screen' in exp.tasks_complete:
         return exp
 
     else:
@@ -633,7 +627,7 @@ def fastq_screen(exp):
 
             #change to experimental directory in scratch
             os.chdir(exp.scratch)
-            exp.tasks_completed.append('Fastq_screen')
+            exp.tasks_complete.append('Fastq_screen')
             print('Screening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -648,7 +642,7 @@ def fastq_screen(exp):
 # Trimming based on standard UM SCCC Core Nextseq 500 technical errors
 def trim(exp):
 
-    if 'Trim' in exp.tasks_completed:
+    if 'Trim' in exp.tasks_complete:
         exp.trimmed = True
         return exp
 
@@ -695,7 +689,7 @@ def trim(exp):
                           '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
                          )
                 os.remove('{loc}{sample}_R1_val_1.fq.gz'.format(loc=exp.fastq_folder,sample=sample))
-                os.remove('{loc}{sample}_R1_val_2.fq.gz'.format(loc=exp.fastq_folder,sample=sample))
+                os.remove('{loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq_folder,sample=sample))
 
             #move logs to qc folder        
             logs = glob.glob(exp.fastq_folder + '*.txt')
@@ -708,7 +702,7 @@ def trim(exp):
 
             #change to experimental directory in scratch
             os.chdir(exp.scratch)
-            exp.tasks_completed.append('Trim')
+            exp.tasks_complete.append('Trim')
             print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -721,7 +715,7 @@ def trim(exp):
 
 def preprocess(exp):
     
-    #exp=fastq_cat(exp)
+    exp=fastq_cat(exp)
     exp=stage(exp)
     exp=fastq_screen(exp)
     exp=trim(exp)
@@ -731,7 +725,7 @@ def preprocess(exp):
 
 def spike(exp):
     
-    if 'Spike' in exp.tasks_completed:
+    if 'Spike' in exp.tasks_complete:
         return exp
 
     elif exp.spike:
@@ -815,12 +809,12 @@ def spike(exp):
     else:
         print("No ERCC spike-in processing."+ '\n', file=open(exp.log_file, 'a'))
     
-    exp.tasks_completed.append('Spike')
+    exp.tasks_complete.append('Spike')
     return exp 
 
 def rsem(exp):
     
-    if 'RSEM' in exp.tasks_completed:
+    if 'RSEM' in exp.tasks_complete:
         return exp
 
     else:
@@ -904,7 +898,7 @@ def rsem(exp):
                 copy2(file,exp.scratch + 'RSEM_results/')
                 os.remove(file)
 
-            exp.tasks_completed.append('RSEM')
+            exp.tasks_complete.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -918,7 +912,7 @@ def rsem(exp):
 
 def kallisto(exp):
     
-    if 'Kallisto' in exp.tasks_completed:
+    if 'Kallisto' in exp.tasks_complete:
         return exp
 
     else:
@@ -980,7 +974,7 @@ def kallisto(exp):
             for rand_id in exp.job_id:
                 job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
             
-            exp.tasks_completed.append('Kallisto')
+            exp.tasks_complete.append('Kallisto')
             
             return exp
 
@@ -1004,7 +998,7 @@ def align(exp):
 
 def count_matrix(exp):
     
-    if 'Count_Matrix' in exp.tasks_completed:
+    if 'Count_Matrix' in exp.tasks_complete:
         return exp
 
     else:
@@ -1042,7 +1036,7 @@ def count_matrix(exp):
             counts.columns = columns
             
             exp.count_matrix = counts
-            exp.tasks_completed.append('Count_Matrix')
+            exp.tasks_complete.append('Count_Matrix')
             print('Sample count matrix complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1060,7 +1054,7 @@ def DESeq2(exp):
     Differential Expression using DESeq2
     '''
     
-    if 'DESeq2' in exp.tasks_completed:
+    if 'DESeq2' in exp.tasks_complete:
         print('DESeq2 already finished.', file=open(exp.log_file,'a'))
         return exp
 
@@ -1127,7 +1121,7 @@ def DESeq2(exp):
                                                           )
             
             print(session(), file=open(exp.log_file, 'a'))    
-            exp.tasks_completed.append('DESeq2')
+            exp.tasks_complete.append('DESeq2')
             print('DESeq2 differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1142,7 +1136,7 @@ def DESeq2(exp):
 
 def clustermap(exp):
     
-    if 'DESeq2_Heatmaps' in exp.tasks_completed:
+    if 'DESeq2_Heatmaps' in exp.tasks_complete:
         return exp
 
     else:
@@ -1165,7 +1159,7 @@ def clustermap(exp):
                 CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.png'.format(comparison=comparison), dpi=200)
                 CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.svg'.format(comparison=comparison), dpi=200)
             
-            exp.tasks_completed.append('DESeq2_Heatmaps')
+            exp.tasks_complete.append('DESeq2_Heatmaps')
             print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1179,7 +1173,7 @@ def clustermap(exp):
 
 def enrichr_de(exp):
     
-    if 'Enrichr_DE' in exp.tasks_completed:
+    if 'Enrichr_DE' in exp.tasks_complete:
         return exp
 
     else:
@@ -1220,7 +1214,7 @@ def enrichr_de(exp):
                                   )
                         
             
-            exp.tasks_completed.append('Enrichr_DE')
+            exp.tasks_complete.append('Enrichr_DE')
             print('Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1234,7 +1228,7 @@ def enrichr_de(exp):
 
 def GSEA(exp):
     
-    if 'GSEA' in exp.tasks_completed:
+    if 'GSEA' in exp.tasks_complete:
         return exp
 
     else:
@@ -1267,7 +1261,7 @@ def GSEA(exp):
                 print('Beginning GSEA:Perturbation enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cgp.v6.1.symbols.gmt', outdir=out_compare)
 
-            exp.tasks_completed.append('GSEA')
+            exp.tasks_complete.append('GSEA')
             print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1281,7 +1275,7 @@ def GSEA(exp):
 
 def PCA(exp):
     
-    if 'PCA' in exp.tasks_completed:
+    if 'PCA' in exp.tasks_complete:
         return exp
 
     else:
@@ -1320,7 +1314,7 @@ def PCA(exp):
                 ax.figure.savefig(out_dir, '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir, '{comparison}_PCA.svg'.format(comparison=comparison))
 
-            exp.tasks_completed.append('PCA')
+            exp.tasks_complete.append('PCA')
             print('PCA for DESeq2 groups complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
             return exp
@@ -1383,7 +1377,7 @@ def plot_venn2(Series, string_name_of_overlap, folder):
 
 def overlaps(exp):
     
-    if 'Overlap' in exp.tasks_completed:
+    if 'Overlap' in exp.tasks_complete:
         return exp
 
     else:
@@ -1427,7 +1421,7 @@ def overlaps(exp):
                                gene_sets='GO_Molecular_Function_2017b', 
                                outdir=out_dir
                               )
-            exp.tasks_completed.append('Overlaps')
+            exp.tasks_complete.append('Overlaps')
             print('Overlap analysis complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                            
             return exp
@@ -1442,7 +1436,7 @@ def overlaps(exp):
 
 def final_qc(exp):
     
-    if 'MultiQC' in exp.tasks_completed:
+    if 'MultiQC' in exp.tasks_complete:
         return exp
 
     else:
@@ -1467,7 +1461,7 @@ def final_qc(exp):
             for rand_id in exp.job_id:
                 job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
             
-            exp.tasks_completed.append('MultiQC')
+            exp.tasks_complete.append('MultiQC')
             
             return exp
 
@@ -1493,7 +1487,7 @@ def finish(exp):
     copytree(exp.scratch, exp.outdir)
     
     print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
-    print(str(exp.tasks_completed) + '\n', file=open(exp.log_file, 'a'))
+    print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
     print('Moved all files into {out}: '.format(out=exp.outdir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
     with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
