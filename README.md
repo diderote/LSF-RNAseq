@@ -1,4 +1,4 @@
-# Instructions for using the Nimerlab RNAseq pipeline (version 0.1):
+# Instructions for using the Nimerlab RNAseq pipeline
 
 ## This pipeline is compatable with UM Pegasus using project nimerlab
 
