@@ -24,12 +24,14 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
-    - Set up sleuth
-    - set analyses for mm10 (convert string)
+    - Set up sleuth and overlap DESeq2 and sleuth DE.  Use overlap for enrichr and sig lists.
+    - finish results tracking/resubmission loop for all bsub processes (kallisto)
+    - make GSEA into a bsub process to speed up
+    - change to take wait out of for loop and just look at whole list in submssion
 
 '''
 
-import os,re,datetime,glob,pickle
+import os,re,datetime,glob,pickle,time
 from shutil import copy2,copytree,rmtree
 import subprocess as sub
 import pandas as pd
@@ -137,6 +139,9 @@ def parse_yaml():
         with open(filename, 'rb') as experiment:
             exp = pickle.load(experiment)
         os.remove(filename)
+
+        print('\n#############\nRestarting pipeline on {date}, from last completed step.'.format(date=str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+
         return exp 
 
     else: 
@@ -390,7 +395,6 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
     rand_id = str(random.randint(0, 100000))
     str_comd_list =  '\n'.join(command_list)
     cmd = '''
-
     #!/bin/bash
 
     #BSUB -J JOB_{job_name}_ID_{random_number}
@@ -420,22 +424,20 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
     print(cmd+ '\n', file=open(exp.log_file, 'a'))
     os.system('bsub < {}'.format(job_path_name))
     print('sending job ID_' + str(rand_id) + '...'+ '\n', file=open(exp.log_file, 'a'))
+    time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
    
     return rand_id
 
 # waits for LSF jobs to finish
-def job_wait(rand_id, job_log_folder):
+def job_wait(id_list, job_log_folder):
     
     running = True
-    time = 0
     while running:
+        print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         jobs_list = os.popen('sleep 30|bhist -w').read()
-        print('Waiting for jobs to finish... {}'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
-
-        if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) == 0:
-            running = False
-        else:
-            time += 10
+        for rand_id in id_list:
+            if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) == 0:
+                running = False
     
 def fastq_cat(exp):
     
@@ -523,48 +525,28 @@ def fastqc(exp):
             exp.qc_folder = exp.scratch + 'QC/'
             os.makedirs(exp.qc_folder, exist_ok=True)
             
-            #Submit fastqc and fastq_screen jobs for each sample
-            if exp.trimmed == False:
                 
-                for number,sample in exp.samples.items():
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    'fastqc ' + exp.fastq_folder + sample + '*',
-                                   ]
+            for number,sample in exp.samples.items():
+                command_list = ['module rm python',
+                                'module rm perl',
+                                'source activate RNAseq',
+                                'fastqc ' + exp.fastq_folder + sample + '*',
+                               ]
 
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                               job_name= sample + '_fastqc',
-                                               job_log_folder=exp.job_folder,
-                                               q= 'general',
-                                               mem=1000
-                                              )
-                                     )
-            elif exp.trimmed:
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= sample + '_fastqc',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=1000
+                                          )
+                                 )
 
-                for number,sample in exp.samples.items():
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    'fastqc ' + exp.fastq_folder + sample + '_trim_*',
-                                   ]
-
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                               job_name= sample + '_fastqc_trim',
-                                               job_log_folder=exp.job_folder,
-                                               q= 'general',
-                                               mem=1000
-                                              )
-                                     )
-            else:
-                raise ValueError("Error processing trimming status.")
-            
             #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
             #move to qc folder
             fastqc_files = glob.glob(exp.fastq_folder + '*.zip')
+            fastqc_files = fastqc_files + glob.glob(exp.fastq_folder + '*.html')
             for f in fastqc_files:
                 copy2(f,exp.qc_folder)
                 os.remove(f)
@@ -611,13 +593,13 @@ def fastq_screen(exp):
                                            job_name= sample + '_fastq_screen',
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
-                                           mem=1000
+                                           mem=3000
                                           )
                                  )
+                time.sleep(1)
             
             #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
             #move to qc folder        
             fastqs_files = glob.glob(exp.fastq_folder + '*screen*')
@@ -653,59 +635,54 @@ def trim(exp):
             #change to experimental directory in scratch
             os.chdir(exp.fastq_folder)
 
-            #Submit fastqc and fastq_screen jobs for each sample
-            for number,sample in exp.samples.items():
-                print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
-                
-                trim_galore= 'trim_galore --clip_R1 2 --clip_R2 2 --paired --three_prime_clip_R1 4 --three_prime_clip_R2 4 {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) 
-                skewer='skewer --mode pe --end-quality 20 --compress --min 18 --threads 15 -n {loc}{sample}_R1_val_1.fq.gz {loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq_folder,sample=sample)
-
-                command_list = ['module rm python',
-                                'module rm perl',
-                                'source activate RNAseq',
-                                trim_galore,
-                                skewer
-                               ]
-
-                exp.job_id.append(send_job(command_list=command_list, 
-                                           job_name= sample + '_trim',
-                                           job_log_folder=exp.job_folder,
-                                           q= 'general',
-                                           mem=1000
-                                          )
-                                 )
             
-            #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-            
-            
-            for number,sample in exp.samples.items():
-                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
-                         )
-                
-                os.rename('{loc}{sample}_R1_val_1.fq-trimmed-pair2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
-                         )
-                os.remove('{loc}{sample}_R1_val_1.fq.gz'.format(loc=exp.fastq_folder,sample=sample))
-                os.remove('{loc}{sample}_R2_val_2.fq.gz'.format(loc=exp.fastq_folder,sample=sample))
+            scan=0
+            while scan < 2:
 
+                #Submit trimming files for each sample
+                for number,sample in exp.samples.items():
+
+                    if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) in glob.glob(exp.fastq_folder + '*.gz'):
+                        pass
+
+                    else:
+                        print('Trimming {sample}: '.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+                        
+                        cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u 2 -u -4 -U 2 -U -4 -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample)
+                        command_list = ['module rm python',
+                                        'module rm perl',
+                                        'source activate RNAseq',
+                                        cutadapt
+                                       ]
+                        exp.job_id.append(send_job(command_list=command_list, 
+                                                   job_name= sample + '_trim',
+                                                   job_log_folder=exp.job_folder,
+                                                   q= 'general',
+                                                   mem=1000
+                                                  )
+                                         )
+                    
+                #Wait for jobs to finish
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+
+                scan += 1
+            
             #move logs to qc folder        
-            logs = glob.glob(exp.fastq_folder + '*.txt')
-            logs = logs + glob.glob(exp.fastq_folder + '*.log')
-            for l in logs:
-                copy2(l,exp.qc_folder) 
-                os.remove(l)
+            print('Trimming logs are found in stdout files from bsub.  Cutadapt does not handle log files in multi-core mode.', file=open(exp.log_file, 'a'))
 
-            exp.trimmed = True
+            for number,sample in exp.samples.items():
+                if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) not in glob.glob(exp.fastq_folder + '*.gz'):
+                    raise RaiseError('Not all samples were trimmed.')
 
             #change to experimental directory in scratch
             os.chdir(exp.scratch)
+
+            exp.trimmed = True 
             exp.tasks_complete.append('Trim')
             print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            
+
             return exp
+
         except:
             print('Error in trimming.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
@@ -731,71 +708,66 @@ def spike(exp):
     elif exp.spike:
         try:
             print("Processing with ERCC spike-in: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            
+                
             ERCC_folder=exp.scratch + 'ERCC/'
             os.makedirs(ERCC_folder, exist_ok=True)
 
-            #Submit STAR alingment for spike-ins for each sample
-            for number,sample in exp.samples.items():
-                print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+            scan = 0
+            while scan < 2:
+                for number,sample in exp.samples.items():
+                    #Scan if succesful during second loop.
+                    if '{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder,sample=sample) in glob.glob(ERCC_folder + '*.tab'):
+                        pass
 
-                spike='STAR --runThreadN 10 --genomeDir /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(loc=ERCC_folder,sample=sample)
+                    else:
+                        #Submit STAR alingment for spike-ins for each sample
+                        print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                command_list = ['module rm python',
-                                'module rm perl',
-                                'source activate RNAseq',
-                                spike
-                               ]
+                        spike='STAR --runThreadN 10 --genomeDir /projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex --readFilesIn {floc}{sample}_trim_R1.fastq.gz {floc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
 
-                exp.job_id.append(send_job(command_list=command_list, 
-                                           job_name= sample + '_ERCC',
-                                           job_log_folder=exp.job_folder,
-                                           q= 'general',
-                                           mem=5000
-                                          )
-                                 )
+                        command_list = ['module rm python',
+                                        'module rm perl',
+                                        'source activate RNAseq',
+                                        spike
+                                       ]
 
-            #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+                        exp.job_id.append(send_job(command_list=command_list, 
+                                                   job_name= sample + '_ERCC',
+                                                   job_log_folder=exp.job_folder,
+                                                   q= 'general',
+                                                   mem=5000
+                                                  )
+                                         )
+
+                #Wait for jobs to finish
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+
+                scan += 1
+
+            print('Spike-in alignment jobs finished.', file=open(exp.log_file, 'a'))
             
             ### Generate one matrix for all spike_counts
-            matrix='rsem-generate-data-matrix '
-            columns=[]
-            for number,sample in exp.samples.items():
-                matrix = matrix + '{loc}{sample}_ERCCReadsPerGene.out.tab '.format(loc=ERCC_folder, sample=sample)
-                columns.append(sample)
-            
-            matrix = matrix + '> {loc}ERCC.count.matrix'.format(loc=ERCC_folder)
-            
-            command_list = ['module rm python',
-                            'source activate RNAseq',
-                            matrix
-                           ]
-
-            exp.job_id.append(send_job(command_list=command_list, 
-                                       job_name= 'ERCC_Count_Matrix',
-                                       job_log_folder=exp.job_folder,
-                                       q= 'general',
-                                       mem=1000
-                                      )
-                             )
-            
-            #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
-            
             try:
-                exp.spike_counts = pd.read_csv('{loc}ERCC.count.matrix'.format(loc=ERCC_folder),
-                                               header=0,
-                                               index_col=0,
-                                               sep="\t")
+                ERCC_counts = glob.glob(ERCC_folder + '*_ERCCReadsPerGene.out.tab')
+                if len(ERCC_counts) != exp.sample_number:
+                    print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
+                    filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+                    with open(filename, 'wb') as experiment:
+                        pickle.dump(exp, experiment)
+                    raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
+                else:
+                    exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
+                
+                    for number,sample in exp.samples.items():
+                        exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
+                    exp.spike_counts = exp.spike_counts.iloc[4:,:]
+                    exp.spike_counts.to_csv('{loc}ERCC.count.matrix'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
             except:
-                print('Error loading spike_counts.', file=open(exp.log_file,'a'))
+                print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
                 filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
                 with open(filename, 'wb') as experiment:
                     pickle.dump(exp, experiment)
-                raise RaiseError('Error loading spike_counts. Make sure the file is not empty.')
+                raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
             
             print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         
@@ -821,82 +793,72 @@ def rsem(exp):
         try:    
             print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
+            os.chdir(exp.scratch)
+
             if exp.genome == 'hg38':
-                #Submit RSEM-STAR for each sample
-                for number,sample in exp.samples.items():
-                    print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
-
-                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                    bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
-                    wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
-                    plot_model='rsem-plot-model {sample} {sample}.models.pdf'
-
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    align,
-                                    bam2wig,
-                                    wig2bw,
-                                    plot_model
-                                    ]
-
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                                job_name= sample + '_RSEM',
-                                                job_log_folder=exp.job_folder,
-                                                q= 'bigmem',
-                                                mem=60000
-                                                )
-                                      )
-            elif exp.genome =='mm10':
-                #Submit RSEM-STAR for each sample
-                for number,sample in exp.samples.items():
-                    print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
-
-                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                    bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
-                    wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
-                    plot_model='rsem-plot-model {sample} {sample}.models.pdf'
-
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    align,
-                                    bam2wig,
-                                    wig2bw,
-                                    plot_model
-                                    ]
-
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                                job_name= sample + '_RSEM',
-                                                job_log_folder=exp.job_folder,
-                                                q= 'bigmem',
-                                                mem=60000
-                                                )
-                                     )
+                align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
+                wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+            elif exp.genome == 'mm10':
+                align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
+                wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
             else:
                 print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
                 filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
                 with open(filename, 'wb') as experiment:
                     pickle.dump(exp, experiment)
                 raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
-
-            #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
              
+            bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
+            plot_model='rsem-plot-model {sample} {sample}.models.pdf'           
+
+            scan=0
+            while scan < 2: #Loop twice to make sure source activate didn't fail the first time
+                for number,sample in exp.samples.items():
+                    if '{sample}_models.pdf'.format(sample=sample) in glob.glob(exp.scratch + '*.pdf'):
+                        pass
+                    else:
+                        print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+
+                        command_list = ['module rm python',
+                                        'module rm perl',
+                                        'source activate RNAseq',
+                                        align,
+                                        bam2wig,
+                                        wig2bw,
+                                        plot_model
+                                        ]
+
+                        exp.job_id.append(send_job(command_list=command_list, 
+                                                    job_name= sample + '_RSEM',
+                                                    job_log_folder=exp.job_folder,
+                                                    q= 'bigmem',
+                                                    mem=60000
+                                                    )
+                                          )
+                        time.sleep(1)
+
+                #Wait for jobs to finish
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            
+                scan += 1
+
             #make RSEM_results folder
             os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
             
             #move results to folder        
             results = glob.glob(exp.scratch + '*.models.pdf')
-            results.append(glob.glob(exp.scratch + '*.genes.results'))
-            results.append(glob.glob(exp.scratch + '*.isoforms.results'))
-            results.append(glob.glob(exp.scratch + '*.genome.sorted.bam'))
-            results.append(glob.glob(exp.scratch + '*.genome.sorted.bam.bai'))
-            results.append(glob.glob(exp.scratch + '*.rsem.bw RSEM_results'))
+            results = results + glob.glob(exp.scratch + '*.genes.results')
+            results = results + glob.glob(exp.scratch + '*.isoforms.results')
+            results = results + glob.glob(exp.scratch + '*.genome.sorted.bam')
+            results = results + glob.glob(exp.scratch + '*.genome.sorted.bam.bai')
+            results = results + glob.glob(exp.scratch + '*.rsem.bw')
             for file in results:
                 copy2(file,exp.scratch + 'RSEM_results/')
                 os.remove(file)
+
+            stat = glob.glob(exp.scratch + '*.stat')
+            for folder in stat:
+                rmtree(folder)
 
             exp.tasks_complete.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -942,6 +904,7 @@ def kallisto(exp):
                                                 mem=60000
                                                 )
                                       )
+
             elif exp.genome == 'mm10':
                 #Submit kallisto for each sample
                 for number,sample in exp.samples.items():
@@ -971,8 +934,7 @@ def kallisto(exp):
                 raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
 
             #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
             exp.tasks_complete.append('Kallisto')
             
@@ -992,9 +954,7 @@ def align(exp):
     exp=rsem(exp)
     exp=kalliso(exp)
 
-    ## handle stop after alignment
     return exp
-
 
 def count_matrix(exp):
     
@@ -1029,8 +989,7 @@ def count_matrix(exp):
                              )
             
             #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
             counts = pd.read_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
             counts.columns = columns
@@ -1239,8 +1198,15 @@ def GSEA(exp):
             out_dir = exp.scratch + 'DESeq2_results/GSEA'
             os.makedirs(out_dir, exist_ok=True)
             
+            if exp.genome == 'mm10':
+                mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
+                mouse2human_dict=mouse2human[1].to_dict()
+
             for comparison,design in exp.design.items():
                 
+                #write a python script for each comparison
+                #submit job for each comparison
+
                 print('Beginning GSEA for {comparison} found in {out}/DESeq2/GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
                 os.makedirs(out_compare, exist_ok=True)
@@ -1248,8 +1214,14 @@ def GSEA(exp):
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 results=exp.de_results[comparison]
                 results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
+
+                #convert to human homolog if mouse
+                if exp.genome == 'mm10':
+                    results['gene_name']=results.gene_name.apply(mouse2human_dict)
+
+                results.index = results.gene_name
                 results.sort_values(by='stat', ascending=False, inplace=True)
-                
+
                 print('Beginning GSEA:Hallmark enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/h.all.v6.1.symbols.gmt', outdir=out_compare)
                 print('Beginning GSEA:KEGG enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1458,8 +1430,7 @@ def final_qc(exp):
                              )
             
             #Wait for jobs to finish
-            for rand_id in exp.job_id:
-                job_wait(rand_id=rand_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
             exp.tasks_complete.append('MultiQC')
             

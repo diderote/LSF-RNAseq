@@ -40,9 +40,8 @@ dependencies:
 - r-sleuth=0.29.0=r3.4.1_0
 - rsem=1.3.0=boost1.64_2
 - samtools=1.3=2
-- skewer=0.2.2=1
 - star=2.5.3a=0
-- trim-galore=0.4.5=pl5.22.0_0
+- ucsc-wigtobigwig=357=0
 - xopen=0.3.2=py36_0
 - asn1crypto=0.22.0=py36_0
 - backports=1.0=py36_1
@@ -92,6 +91,7 @@ dependencies:
 - libpng=1.6.28=1
 - libssh2=1.8.0=1
 - libtiff=4.0.7=0
+- libuuid=1.0.3=1
 - libwebp=0.5.2=7
 - libxcb=1.12=1
 - libxml2=2.9.5=0
@@ -101,6 +101,7 @@ dependencies:
 - markupsafe=1.0=py36_0
 - matplotlib=2.1.1=py36_0
 - matplotlib-venn=0.11.5=py36_0
+- mysql-connector-c=6.1.6=0
 - ncurses=5.9=10
 - networkx=1.11=py36_0
 - numpy=1.13.3=py36_blas_openblas_201
@@ -113,6 +114,7 @@ dependencies:
 - perl=5.22.0.1=0
 - pexpect=4.3.1=py36_0
 - pickleshare=0.7.4=py36_0
+- pigz=2.3.4=0
 - pip=9.0.1=py36_0
 - pixman=0.34.0=1
 - prompt_toolkit=1.0.15=py36_0
