@@ -26,6 +26,8 @@ Requires a conda environment 'RNAseq' made from RNAseq.yml
 To do:
     - Set up sleuth and overlap DESeq2 and sleuth DE.  Use overlap for enrichr and sig lists.
     - finish results tracking/resubmission loop for all bsub processes (kallisto)
+    - change job name is scan ==1
+    - check exit probme with RSEM
 
 '''
 
@@ -416,7 +418,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
                                     )
     
     job_path_name = job_log_folder + job_name+'.sh'
-    write_job = open(job_path_name, 'a')
+    write_job = open(job_path_name, 'w')
     write_job.write(cmd)
     write_job.close()
     print(cmd+ '\n', file=open(exp.log_file, 'a'))
@@ -431,7 +433,7 @@ def job_wait(id_list, job_log_folder):
     
     running = True
     while running:
-        jobs_list = os.popen('sleep 30|bhist -w').read()
+        jobs_list = os.popen('sleep 60|bhist -w').read()
         current=[]
         for rand_id in id_list:
             if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) != 0:
@@ -795,7 +797,8 @@ def rsem(exp):
         try:    
             print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
-            os.chdir(exp.scratch)        
+            os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
+            os.chdir(exp.scratch + 'RSEM_results/')        
 
             scan=0
             while scan < 2: #Loop twice to make sure source activate didn't fail the first time
@@ -816,7 +819,7 @@ def rsem(exp):
                     bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
                     plot_model='rsem-plot-model {sample} {sample}.models.pdf'   
 
-                    if '{sample}_models.pdf'.format(sample=sample) in glob.glob(exp.scratch + '*.pdf'):
+                    if '{sample}.rsem.bw'.format(sample=sample) in glob.glob(exp.scratch + '*.bw'):
                         pass
                     else:
                         print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
@@ -837,28 +840,14 @@ def rsem(exp):
                                                     mem=60000
                                                     )
                                           )
-                        time.sleep(1)
+                        time.sleep(5)
 
                 #Wait for jobs to finish
                 job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
                 scan += 1
 
-            #make RSEM_results folder
-            os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
-            
-            #move results to folder        
-            results = glob.glob(exp.scratch + '*.models.pdf')
-            results = results + glob.glob(exp.scratch + '*.genes.results')
-            results = results + glob.glob(exp.scratch + '*.isoforms.results')
-            results = results + glob.glob(exp.scratch + '*.genome.sorted.bam')
-            results = results + glob.glob(exp.scratch + '*.genome.sorted.bam.bai')
-            results = results + glob.glob(exp.scratch + '*.rsem.bw')
-            for file in results:
-                copy2(file,exp.scratch + 'RSEM_results/')
-                os.remove(file)
-
-            stat = glob.glob(exp.scratch + '*.stat')
+            stat = glob.glob(exp.scratch + '' + '*.stat')
             for folder in stat:
                 rmtree(folder)
 
