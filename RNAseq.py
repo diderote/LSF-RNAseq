@@ -26,8 +26,6 @@ Requires a conda environment 'RNAseq' made from RNAseq.yml
 To do:
     - Set up sleuth and overlap DESeq2 and sleuth DE.  Use overlap for enrichr and sig lists.
     - finish results tracking/resubmission loop for all bsub processes (kallisto)
-    - make GSEA into a bsub process to speed up
-    - change to take wait out of for loop and just look at whole list in submssion
 
 '''
 
@@ -433,11 +431,15 @@ def job_wait(id_list, job_log_folder):
     
     running = True
     while running:
-        print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         jobs_list = os.popen('sleep 30|bhist -w').read()
+        current=[]
         for rand_id in id_list:
-            if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) == 0:
-                running = False
+            if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) != 0:
+                current.append(rand_id)
+        if len(current) == 0:
+            running = False
+        else:
+            print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
 def fastq_cat(exp):
     
@@ -1193,11 +1195,11 @@ def GSEA(exp):
     else:
         try:
 
-            import geseapy
+            import gseapy
             
             out_dir = exp.scratch + 'DESeq2_results/GSEA'
             os.makedirs(out_dir, exist_ok=True)
-            
+
             if exp.genome == 'mm10':
                 mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
                 mouse2human_dict=mouse2human[1].to_dict()
@@ -1221,17 +1223,42 @@ def GSEA(exp):
 
                 results.index = results.gene_name
                 results.sort_values(by='stat', ascending=False, inplace=True)
+                results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=True, index=True, sep="\t")
 
-                print('Beginning GSEA:Hallmark enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/h.all.v6.1.symbols.gmt', outdir=out_compare)
-                print('Beginning GSEA:KEGG enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cp.kegg.v6.1.symbols.gmt', outdir=out_compare)
-                print('Beginning GSEA:GO biological process enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.bp.v6.1.symbols.gmt', outdir=out_compare)
-                print('Beginning GSEA:GO molecular function enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.mf.v6.1.symbols.gmt', outdir=out_compare)
-                print('Beginning GSEA:Perturbation enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.prerank(rnk= results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cgp.v6.1.symbols.gmt', outdir=out_compare)
+                #make gsea subission python script
+                cmd_py = '''
+                #!/usr/bin/env python
+                import pandas
+                import gseapy
+                results=pd.read_csv('{out_compare}/{comparison}.rnk', header=0, index_col=0, sep="\t")
+                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/h.all.v6.1.symbols.gmt', outdir={out_compare})
+                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cp.kegg.v6.1.symbols.gmt', outdir={out_compare})
+                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.bp.v6.1.symbols.gmt', outdir={out_compare})
+                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.mf.v6.1.symbols.gmt', outdir={out_compare})
+                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cgp.v6.1.symbols.gmt', outdir={out_compare})
+                '''.format(out_compare=out_compare, comparison=comparison)
+                job_path_name = '{out_compare}/{comparison}_GSEA.py'
+                write_job = open(job_path_name, 'w')
+                write_job.write(cmd_py)
+                write_job.close()
+                
+                print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+                
+                command_list = ['module rm python',
+                                'source activate RNAseq',
+                                'python {}'.format(job_path_name)
+                               ]
+
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= comparison + '_GSEA',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=1000
+                                           )
+                                  )
+            
+            #Wait for jobs to finish
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)    
 
             exp.tasks_complete.append('GSEA')
             print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
