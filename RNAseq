@@ -5,7 +5,7 @@
 
 Nimerlab-RNASeq-pipeline-v0.1
 
-Copyright © 2017-2018 Daniel L. Karl
+Copyright © 2018 Daniel L. Karl
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation 
 files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, 
@@ -25,9 +25,10 @@ Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
     - Set up sleuth and overlap DESeq2 and sleuth DE.  Use overlap for enrichr and sig lists.
-    - finish results tracking/resubmission loop for all bsub processes (kallisto)
-    - change job name is scan ==1
-    - check exit probme with RSEM
+        - if using ERCC spike-in, check the variation from DESeq2 normalization methods and use ony DESeq2, not sleuth)
+            if exceeds a certain threshold different per sample (10%?). Sleuth does not handle external normlizaiton.
+    - check kallisto output memory
+    - ICA with chi-square with de groups
 
 '''
 
@@ -483,7 +484,6 @@ def fastq_cat(exp):
         print('Pipeline not set up to handle fastq merging yet.', file=open(exp.log_file,'a'))
         raise RaiseError('Pipeline not set up to handle fastq merging yet.  Use "cat file1 file2 > final_file" to manually merge then restart.')
 
-
 # Stages experiment in a scratch folder
 def stage(exp):
     
@@ -658,8 +658,9 @@ def trim(exp):
                                         'source activate RNAseq',
                                         cutadapt
                                        ]
+
                         exp.job_id.append(send_job(command_list=command_list, 
-                                                   job_name= sample + '_trim',
+                                                   job_name= sample + "_trim",
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
                                                    mem=1000
@@ -768,9 +769,6 @@ def spike(exp):
                     exp.spike_counts.to_csv('{loc}ERCC.count.matrix'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
             except:
                 print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
-                filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                with open(filename, 'wb') as experiment:
-                    pickle.dump(exp, experiment)
                 raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
             
             print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -811,9 +809,6 @@ def rsem(exp):
                         wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
                     else:
                         print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
-                        filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                        with open(filename, 'wb') as experiment:
-                            pickle.dump(exp, experiment)
                         raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
                      
                     bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
@@ -870,63 +865,53 @@ def kallisto(exp):
 
     else:
         try:
-            print('Beginning Kallisto alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            
             #make Kallisto_results folder
             os.makedirs(exp.scratch + 'Kallisto_results/', exist_ok=True)
-            
-            if exp.genome == 'hg38':
+
+            scan = 0
+            while scan < 2:
+
+                print('Beginning Kallisto alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+
                 #Submit kallisto for each sample
                 for number,sample in exp.samples.items():
-                    print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq_folder,sample=sample)
+                    kal_out = exp.scratch + 'Kallisto_results/' + sample + '/'
+                    os.makedirs(kal_out, exist_ok=true)
 
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    align
-                                    ]
+                    if 'abundance.tsv' in glob.glob(kal_out + '*.tsv'):
+                        pass 
+                    
+                    else:   
+                        if exp.genome == 'hg38':
+                            align = 'kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=kal_out,loc=exp.fastq_folder,sample=sample)
+                        elif exp.genome == 'mm10':
+                            align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/KallistoIndex/GRCm38.transcripts.idx --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=kal_out,loc=exp.fastq_folder,sample=sample)
+                        else:
+                            print('Error in kallisto alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
+                            raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
 
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                                job_name= sample + '_Kallisto',
-                                                job_log_folder=exp.job_folder,
-                                                q= 'bigmem',
-                                                mem=60000
-                                                )
-                                      )
+                        print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-            elif exp.genome == 'mm10':
-                #Submit kallisto for each sample
-                for number,sample in exp.samples.items():
-                    print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+                        command_list = ['module rm python',
+                                        'module rm perl',
+                                        'source activate RNAseq',
+                                        align
+                                       ]
 
-                    align='kallisto quant --index=/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/KallistoIndex/GRCm38.transcripts.idx --output-dir={out}Kallisto_results --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(out=exp.scratch,loc=exp.fastq_folder,sample=sample)
+                        exp.job_id.append(send_job(command_list=command_list, 
+                                                   job_name= sample + '_Kallisto',
+                                                   job_log_folder=exp.job_folder,
+                                                   q= 'bigmem',
+                                                   mem=60000
+                                                  )
+                                         )
 
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    align
-                                    ]
+                    #Wait for jobs to finish
+                    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                    
+                scan += 1
 
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                                job_name= sample + '_Kallisto',
-                                                job_log_folder=exp.job_folder,
-                                                q= 'bigmem',
-                                                mem=60000
-                                                )
-                                      )
-
-            else:
-                print('Error in kallisto, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
-                filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                with open(filename, 'wb')  as experiment:
-                    pickle.dump(exp, experiment)
-                raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
-
-            #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
-            
             exp.tasks_complete.append('Kallisto')
             
             return exp
@@ -938,12 +923,11 @@ def kallisto(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during Kallisto alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
-
 def align(exp):
     
     exp=spike(exp)
     exp=rsem(exp)
-    exp=kalliso(exp)
+    exp=kallisto(exp)
 
     return exp
 
@@ -1083,7 +1067,6 @@ def DESeq2(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during DESeq2. Fix problem then resubmit with same command to continue from last completed step.')
     
-
 def clustermap(exp):
     
     if 'DESeq2_Heatmaps' in exp.tasks_complete:
@@ -1317,7 +1300,6 @@ def PCA(exp):
 def diff_exp(exp):
     
     exp = count_matrix(exp)
-    exp = spike_norm(exp)
     exp = DESeq2(exp)
     exp = clustermap(exp)
     exp = enrichr_de(exp)
@@ -1327,7 +1309,6 @@ def diff_exp(exp):
     #ICA  
 
     return exp
-
 
 def plot_venn2(Series, string_name_of_overlap, folder):
     '''
@@ -1361,7 +1342,6 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     plt.tight_layout()
     plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".svg", dpi=200)
     plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".png", dpi=200)
-
 
 def overlaps(exp):
     
@@ -1420,7 +1400,6 @@ def overlaps(exp):
             with open(filename, 'wb') as experiment:
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during overlap analysis. Fix problem then resubmit with same command to continue from last completed step.')
-
 
 def final_qc(exp):
     
@@ -1485,10 +1464,8 @@ def finish(exp):
         print(package, file=open(exp.log_file, 'a'))
 
     print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
-    
 
 ### Pipeline:
-
 exp = parse_yaml()
 exp = preprocess(exp)
 exp = align(exp)
