@@ -24,9 +24,7 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
-    - Set up sleuth and overlap DESeq2 and sleuth DE.  Use overlap for enrichr and sig lists.
-        - if using ERCC spike-in, check the variation from DESeq2 normalization methods and use ony DESeq2, not sleuth)
-            if exceeds a certain threshold different per sample (10%?). Sleuth does not handle external normlizaiton.
+    - Finish sleuth and deseq/sleuth overlap sigs
     - check kallisto output memory
     - ICA with chi-square with de groups
 
@@ -45,6 +43,7 @@ class Experiment(object):
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
                   tasks_complete,de_results,sig_lists,overlap_results,
+                  exp.de_sig_overlap
                  ):
         self.scratch = scratch
         self.date = date
@@ -73,6 +72,7 @@ class Experiment(object):
         self.de_results = de_results
         self.sig_lists=sig_lists
         self.overlap_results=overlap_results
+        self.exp.de_sig_overlap
 
 def new_experiment():
     experiment = Experiment(scratch = '',
@@ -102,6 +102,7 @@ def new_experiment():
                             de_results = {},
                             sig_lists={},
                             overlap_results={},
+                            de_sig_overlap = True
                            )
     return experiment
 
@@ -169,7 +170,7 @@ def parse_yaml():
             print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
 
         if exp.start == 'Counts':
-            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix']
+            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
        
         #Start Fastq
         if yml['Startpoint']['Fastq']['Start']:
@@ -191,14 +192,16 @@ def parse_yaml():
             if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
                 exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
                                                header= 0, index_col=0, sep="\t")
+            exp.de_sig_overlap == False
             else:
                 raise IOError("Count Matrix Not Found.")    
             print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
+            print("Only performing DESeq2 differential expression.", file=open(exp.log_file, 'a'))
         
         #End Point
         if yml['Stop']['Alignment']:
             exp.stop = 'Alignment'
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Stop']['Differential_Expression']:
             exp.stop = 'DE'
@@ -968,7 +971,8 @@ def count_matrix(exp):
             
             counts = pd.read_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
             counts.columns = columns
-            
+            counts.to_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=True, index=True, sep="\t")
+
             exp.count_matrix = counts
             exp.tasks_complete.append('Count_Matrix')
             print('Sample count matrix complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -999,9 +1003,10 @@ def DESeq2(exp):
             
             import numpy as np
             import rpy2.robjects as ro
-            ro.pandas2ri.activate()
+            from rpy2.robjects.packages import importr
+            from rpy2.robjects import pandas2ri
             
-            deseq = ro.packages.importr('DESeq2')
+            deseq = importr('DESeq2')
             as_df=ro.r("as.data.frame")
             assay=ro.r("assay")
             session=ro.r("sessionInfo")
@@ -1017,6 +1022,8 @@ def DESeq2(exp):
                 colData=design['colData']
                 design=design['design']
                 data=count_matrix[design['all_samples']]
+                data = counts[counts.sum(axis=1) > 1]
+                data = round(data).astype(int)
                 dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
                                                                colData=colData,
                                                                design=design
@@ -1030,12 +1037,27 @@ def DESeq2(exp):
                     ERCC_data = exp.spike_counts[design['all_samples']]
                     ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
                     ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
-                    sizeFactors=robjects.r("sizeFactors")
+                    deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds)
+                    sizeFactors=ro.r("sizeFactors")
                     dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
                     dds[comparison] = deseq.DESeq(dds[comparison])
-                
+
+                    #compare size factors from DESeq2 and ERCC for inconsistencies
+                    ERCC_vector=pandas2ri.ri2py_vector(ERCC_size)
+                    deseq2_vector=pandas2ri.ri2py_vector(deseq2_size)
+                    if len(ERCC_vector) == len(deseq2_vector):
+                        for x in range(len(ERCC_vector)):
+                            if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
+                                print('ERCC spike is greater than 10 percent different than deseq2 size factor.  Will not perform Sleuth overlap for significance.', file=open(exp.log_file,'a'))
+                                exp.de_sig_overlap = False
+                                break
+                            else:
+                                pass
+                    else:
+                        RaiseError('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison))
+
                 #DESeq2 results
-                exp.de_results[comparison] = ro.pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
+                exp.de_results[comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
                 exp.de_results[comparison].index = data.index
                 exp.de_results[comparison].sort_values(by='padj', ascending=True, inplace=True)
                 exp.de_results[comparison]['gene_name']=exp.de_results[comparison].index
@@ -1045,7 +1067,7 @@ def DESeq2(exp):
                                                   sep="\t"
                                                  )
                 #Variance Stabilized log2 expected counts.
-                exp.de_results[comparison + '_vst'] = ro.pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
+                exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
                 exp.de_results[comparison + '_vst'].columns = data.columns
                 exp.de_results[comparison + '_vst'].index = data.index
                 exp.de_results[comparison + '_vst'].to_csv(out_dir + comparison + '-VST-counts.txt', 
@@ -1053,7 +1075,7 @@ def DESeq2(exp):
                                                            index=True, 
                                                            sep="\t"
                                                           )
-            
+
             print(session(), file=open(exp.log_file, 'a'))    
             exp.tasks_complete.append('DESeq2')
             print('DESeq2 differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1066,6 +1088,64 @@ def DESeq2(exp):
             with open(filename, 'wb') as experiment:
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during DESeq2. Fix problem then resubmit with same command to continue from last completed step.')
+
+def Sleuth(exp):
+
+    if 'Sleuth' in exp.tasks_complete:
+        return exp
+
+    else:
+        try:
+            #check if ERCC different than DESeq2.
+            if exp.de_sig_overlap:
+                print('Beginning Sleuth differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+                
+                import numpy as np
+                import rpy2.robjects as ro
+                from rpy2.robjects.packages import importr
+                from rpy2.robjects import pandas2ri
+                
+                #kal_dirs = list of paths to kallisto results
+                # make a dataframe that looks like this:
+                ##      sample condition                          path
+                ## 1 SRR493366  scramble ../results/SRR493366/kallisto
+
+                #add biomart
+                #if hg38/mm10:
+                #mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "dec2015.archive.ensembl.org")
+                #mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'ensembl.org')
+                #t2g <- biomaRt::getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id","external_gene_name"), mart = mart)
+                #t2g <- dplyr::rename(t2g, target_id = ensembl_transcript_id, ens_gene = ensembl_gene_id, ext_gene = external_gene_name)
+
+                #so <- sleuth_prep(s2c, extra_bootstrap_summary = TRUE, target_mapping = t2g, aggregation_column = 'ens_gene')
+                #so <- sleuth_fit(so, ~condition, 'full')
+                #so <- sleuth_fit(so, ~1, 'reduced')
+                #so <- sleuth_lrt(so, 'reduced', 'full')
+                #sleuth_table <- sleuth_results(so, 'reduced:full', 'lrt', show_all = FALSE)
+                #sleuth_significant <- dplyr::filter(sleuth_table, qval <= 0.05)
+
+                #more complicated batch effect: https://pachterlab.github.io/sleuth_walkthroughs/bottomly/analysis.html.
+                #(or more complicated batch: so <- sleuth_fit(so, ~batch + condition, 'full') )
+
+
+                #print and do sig overlaps to exp.sig lists
+
+                print(session(), file=open(exp.log_file, 'a'))    
+                print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            else:
+                print('Not performing slueth differential expression analysis.' file=open(exp.log_file,'a'))
+
+            exp.tasks_complete.append('Sleuth')
+            return exp
+
+        except:
+            print('Error during Sleuth.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
+            raise RaiseError('Error during Sleuth. Fix problem then resubmit with same command to continue from last completed step.')
+
+
     
 def clustermap(exp):
     
@@ -1301,11 +1381,12 @@ def diff_exp(exp):
     
     exp = count_matrix(exp)
     exp = DESeq2(exp)
+    #exp = Sleuth(exp)
     exp = clustermap(exp)
     exp = enrichr_de(exp)
     exp = GSEA(exp)
     exp = PCA(exp)
-    #Sleuth
+    
     #ICA  
 
     return exp
