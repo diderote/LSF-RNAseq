@@ -15,7 +15,8 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 11. Overlap of multiple DE significant gene lists.
 
 The pipeline handles multiple entry/exit points and parse complex experimental designs and compensation types for DE.
-In case of error, the pipeline restarts from the last completed step. 
+In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
+All submission scripts, error and output files are saved.
 
 
 ## Instructions for installation and use:
