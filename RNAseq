@@ -42,8 +42,7 @@ class Experiment(object):
                   log_file,start,fastq_folder,fastq_start,spike,trimmed,
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
-                  tasks_complete,de_results,sig_lists,overlap_results,
-                  de_sig_overlap
+                  tasks_complete,de_results,sig_lists,overlap_results,de_sig_overlap
                  ):
         self.scratch = scratch
         self.date = date
