@@ -202,7 +202,7 @@ def parse_yaml():
         #End Point
         if yml['Stop']['Alignment']:
             exp.stop = 'Alignment'
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Stop']['Differential_Expression']:
             exp.stop = 'DE'
@@ -1091,43 +1091,6 @@ def DESeq2(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during DESeq2. Fix problem then resubmit with same command to continue from last completed step.')
 
-def clustermap(exp):
-    
-    if 'DESeq2_Heatmaps' in exp.tasks_complete:
-        return exp
-
-    else:
-        try:
-
-            import seaborn as sns
-            
-            os.makedirs(exp.scratch + 'DESeq2_results/Heatmaps/', exist_ok=True)
-            
-            for comparison,design in exp.design.items():
-                results=exp.de_results['DE2_' + comparison]
-                vst = exp.de_results[comparison + '_vst']
-                sig = results[(results.padj < 0.05) & ((results.log2FoldChange > 1) | (results.log2FoldChange < -1))].gene_name.tolist()
-                CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
-                CM.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_2FC_Heatmap.png'.format(comparison=comparison), dpi=200)
-                CM.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_2FC_Heatmap.png'.format(comparison=comparison), dpi=200)
-            
-                sig15 = results[(results.padj < 0.05) & ((results.log2FoldChange > 0.585) | (results.log2FoldChange < -0.585))].gene_name.tolist()
-                CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)], z_score=0, method='complete', cmap='RdBu_r')
-                CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.png'.format(comparison=comparison), dpi=200)
-                CM15.savefig(exp.scratch + 'DESeq2_results/Heatmaps/{comparison}_1.5FC_Heatmap.svg'.format(comparison=comparison), dpi=200)
-            
-            exp.tasks_complete.append('DESeq2_Heatmaps')
-            print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            
-            return exp
-
-        except:
-            print('Error during heatmap generation.', file=open(exp.log_file,'a'))
-            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            with open(filename, 'wb') as experiment:
-                pickle.dump(exp, experiment)
-            raise RaiseError('Error during heatmap generation. Fix problem then resubmit with same command to continue from last completed step.')
-
 def Sleuth(exp):
 
     if 'Sleuth' in exp.tasks_complete:
@@ -1267,6 +1230,43 @@ def sigs(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during identificaiton of significantly differentially expressed genes. Fix problem then resubmit with same command to continue from last completed step.')            
 
+def clustermap(exp):
+    
+    if 'Heatmaps' in exp.tasks_complete:
+        return exp
+
+    else:
+        try:
+
+            import seaborn as sns
+            
+            out_dir=exp.scratch + 'Heatmaps/'
+            os.makedirs(out_dir, exist_ok=True)
+            
+            for comparison,design in exp.design.items():
+                vst = exp.de_results[comparison + '_vst']
+
+                sig = list(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
+                CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
+                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dircomparison=comparison), dpi=200)
+            
+                sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
+                CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)], z_score=0, method='complete', cmap='RdBu_r')
+                CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+                CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+            
+            exp.tasks_complete.append('Heatmaps')
+            print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            
+            return exp
+
+        except:
+            print('Error during heatmap generation.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
+            raise RaiseError('Error during heatmap generation. Fix problem then resubmit with same command to continue from last completed step.')
 
 def enrichr_de(exp):
     
