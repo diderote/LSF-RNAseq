@@ -24,7 +24,6 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
-    - Finish sleuth and deseq/sleuth overlap sigs
     - check kallisto output memory
     - ICA with chi-square with de groups
 
@@ -43,7 +42,7 @@ class Experiment(object):
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
                   tasks_complete,de_results,sig_lists,overlap_results,
-                  de_sig_overlap
+                  de_sig_overlap, sig_lists
                  ):
         self.scratch = scratch
         self.date = date
@@ -73,6 +72,7 @@ class Experiment(object):
         self.sig_lists=sig_lists
         self.overlap_results=overlap_results
         self.de_sig_overlap = de_sig_overlap
+        self.sig_lists=sig_lists
 
 def new_experiment():
     experiment = Experiment(scratch = '',
@@ -103,6 +103,7 @@ def new_experiment():
                             sig_lists={},
                             overlap_results={},
                             de_sig_overlap = True
+                            sig_lists={}
                            )
     return experiment
 
@@ -170,7 +171,7 @@ def parse_yaml():
             print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
 
         if exp.start == 'Counts':
-            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
+            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth','Sigs']
        
         #Start Fastq
         if yml['Startpoint']['Fastq']['Start']:
@@ -201,11 +202,11 @@ def parse_yaml():
         #End Point
         if yml['Stop']['Alignment']:
             exp.stop = 'Alignment'
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Stop']['Differential_Expression']:
             exp.stop = 'DE'
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2_Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after differential expression analysis.'+ '\n', file=open(exp.log_file, 'a'))
         else:
             exp.stop = 'END'
@@ -1005,6 +1006,7 @@ def DESeq2(exp):
             import rpy2.robjects as ro
             from rpy2.robjects.packages import importr
             from rpy2.robjects import pandas2ri
+            pandas2ri.activate()
             
             deseq = importr('DESeq2')
             as_df=ro.r("as.data.frame")
@@ -1057,15 +1059,15 @@ def DESeq2(exp):
                         RaiseError('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison))
 
                 #DESeq2 results
-                exp.de_results[comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
-                exp.de_results[comparison].index = data.index
-                exp.de_results[comparison].sort_values(by='padj', ascending=True, inplace=True)
-                exp.de_results[comparison]['gene_name']=exp.de_results[comparison].index
-                exp.de_results[comparison].to_csv(out_dir + comparison + '-DESeq2-results.txt', 
-                                                  header=True, 
-                                                  index=True, 
-                                                  sep="\t"
-                                                 )
+                exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
+                exp.de_results['DE2_' + comparison].index = data.index
+                exp.de_results['DE2_' + comparison].sort_values(by='padj', ascending=True, inplace=True)
+                exp.de_results['DE2_' + comparison]['gene_name']=exp.de_results['DE2_'+comparison].index
+                exp.de_results['DE2_' + comparison].to_csv(out_dir + comparison + '-DESeq2-results.txt', 
+                                                           header=True, 
+                                                           index=True, 
+                                                           sep="\t"
+                                                          )
                 #Variance Stabilized log2 expected counts.
                 exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
                 exp.de_results[comparison + '_vst'].columns = data.columns
@@ -1089,64 +1091,6 @@ def DESeq2(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during DESeq2. Fix problem then resubmit with same command to continue from last completed step.')
 
-def Sleuth(exp):
-
-    if 'Sleuth' in exp.tasks_complete:
-        return exp
-
-    else:
-        try:
-            #check if ERCC different than DESeq2.
-            if exp.de_sig_overlap:
-                print('Beginning Sleuth differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                
-                import numpy as np
-                import rpy2.robjects as ro
-                from rpy2.robjects.packages import importr
-                from rpy2.robjects import pandas2ri
-                
-                #kal_dirs = list of paths to kallisto results
-                # make a dataframe that looks like this:
-                ##      sample condition                          path
-                ## 1 SRR493366  scramble ../results/SRR493366/kallisto
-
-                #add biomart
-                #if hg38/mm10:
-                #mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "dec2015.archive.ensembl.org")
-                #mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'ensembl.org')
-                #t2g <- biomaRt::getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id","external_gene_name"), mart = mart)
-                #t2g <- dplyr::rename(t2g, target_id = ensembl_transcript_id, ens_gene = ensembl_gene_id, ext_gene = external_gene_name)
-
-                #so <- sleuth_prep(s2c, extra_bootstrap_summary = TRUE, target_mapping = t2g, aggregation_column = 'ens_gene')
-                #so <- sleuth_fit(so, ~condition, 'full')
-                #so <- sleuth_fit(so, ~1, 'reduced')
-                #so <- sleuth_lrt(so, 'reduced', 'full')
-                #sleuth_table <- sleuth_results(so, 'reduced:full', 'lrt', show_all = FALSE)
-                #sleuth_significant <- dplyr::filter(sleuth_table, qval <= 0.05)
-
-                #more complicated batch effect: https://pachterlab.github.io/sleuth_walkthroughs/bottomly/analysis.html.
-                #(or more complicated batch: so <- sleuth_fit(so, ~batch + condition, 'full') )
-
-
-                #print and do sig overlaps to exp.sig lists
-
-                print(session(), file=open(exp.log_file, 'a'))    
-                print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            else:
-                print('Not performing slueth differential expression analysis.', file=open(exp.log_file,'a'))
-
-            exp.tasks_complete.append('Sleuth')
-            return exp
-
-        except:
-            print('Error during Sleuth.', file=open(exp.log_file,'a'))
-            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-            with open(filename, 'wb') as experiment:
-                pickle.dump(exp, experiment)
-            raise RaiseError('Error during Sleuth. Fix problem then resubmit with same command to continue from last completed step.')
-
-
-    
 def clustermap(exp):
     
     if 'DESeq2_Heatmaps' in exp.tasks_complete:
@@ -1160,7 +1104,7 @@ def clustermap(exp):
             os.makedirs(exp.scratch + 'DESeq2_results/Heatmaps/', exist_ok=True)
             
             for comparison,design in exp.design.items():
-                results=exp.de_results[comparison]
+                results=exp.de_results['DE2_' + comparison]
                 vst = exp.de_results[comparison + '_vst']
                 sig = results[(results.padj < 0.05) & ((results.log2FoldChange > 1) | (results.log2FoldChange < -1))].gene_name.tolist()
                 CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
@@ -1184,6 +1128,146 @@ def clustermap(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during heatmap generation. Fix problem then resubmit with same command to continue from last completed step.')
 
+def Sleuth(exp):
+
+    if 'Sleuth' in exp.tasks_complete:
+        return exp
+
+    else:
+        try:
+            #check if ERCC different than DESeq2.
+            if exp.de_sig_overlap:
+
+                out_dir= exp.scratch + 'Sleuth_results/'
+                kal_dir= exp.cratch + 'Kallisto/'
+                os.makedirs(out_dir, exist_ok=True)
+
+                print('Beginning Sleuth differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+
+                import pandas as pd
+                from rpy2.robjects.packages import importr
+                from rpy2.robjects import pandas2ri, r, globalenv, Formula
+                pandas2ri.activate()
+                sleuth = importr('sleuth') 
+                biomart = importr('biomart')
+                dplyr = importr('dplry')
+                session=ro.r("sessionInfo")
+
+                for comparison,design in exp.design.items():
+                    path = []
+                    for name in design['colData'].sample_names.tolist():
+                        path.append(kal_dir + name)
+
+                    if compensation in design['colData'].columns:
+                        s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+                                            'compensation': design['colData'].compensation.tolist(),
+                                            'condition': design['colData'].main_comparison.tolist(),
+                                            'path': path
+                                           },
+                                           index=range(1, len(path)+1)
+                                          )
+                        s2c = s2c[['sample','compensation','condition','path']]
+                        condition=Formula('~ compensation + condition')
+                        reduced = Formula('~compensation')
+                    else:
+                        s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+                                            'condition': design['colData'].main_comparison.tolist(),
+                                            'path': path
+                                           },
+                                           index=range(1, len(path)+1)
+                                          )
+                        s2c = s2c[['sample','condition','path']]
+                        condition=Formula('~ condition')
+                        reduced = Formula('~1')
+
+                    r('s2c$path = as.character(s2c$path)')
+                    s2c = globalenv["s2c"]
+                    
+                    if exp.genome == 'mm10':
+                        mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
+                    elif exp.genome == 'hg38':
+                        mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'ensembl.org')
+                    else:
+                       raise RaiseError('Error in sleuth, pipeline only handles hg38 and mm10')
+
+                    t2g = biomart.getBM(attributes = ro.StrVector(("ensembl_transcript_id_version", "ensembl_gene_id","external_gene_name")), mart=mart)
+                    t2g = dplyr.rename(t2g, target_id = 'ensembl_transcript_id_version', ens_gene = 'ensembl_gene_id', ext_gene = 'external_gene_name')
+
+                    so = sleuth.sleuth_prep(s2c, target_mapping = t2g, num_cores=1, aggregation_column = 'ens_gene')
+                    so = sleuth.sleuth_fit(so, condition, 'full')
+                    so = sleuth.sleuth_fit(so, reduced, 'reduced')
+                    so = sleuth.sleuth_lrt(so, 'reduced', 'full')
+                    print(sleuth.models(so), file=open(exp.log_file,'a'))
+                    sleuth_table=sleuth.sleuth_results(so, 'reduced:full','lrt',show_all=True)
+                    exp.de_results['SL_' + comparison] = pandas2ri.ri2py(sleuth_table)
+                    exp.de_results['SL_' + comparison].to_csv('{out_dir}{comparison}_slueth_results.txt'.format(out_dir=out_dir, comparison=comparison), header=True, index=True, sep="\t")
+
+                print(session(), file=open(exp.log_file, 'a'))    
+                print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            else:
+                print('Not performing slueth differential expression analysis.', file=open(exp.log_file,'a'))
+
+            exp.tasks_complete.append('Sleuth')
+            return exp
+
+        except:
+            print('Error during Sleuth.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
+            raise RaiseError('Error during Sleuth. Fix problem then resubmit with same command to continue from last completed step.')
+
+def sigs(exp):
+
+    if 'Sigs' in exp.tasks_complete:
+        return exp
+
+    else:
+        try:
+            if exp.de_sig_overlap:
+                print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2.', file=open(exp.log_file,'a'))
+
+                for comparison,design in exp.design.items():
+                    exp.sig_lists[comparison] = {}
+                    DE_results=exp.de_results['DE2_'+comparison]
+                    DE_results['gene_name']=DE_results.gene_name.apply(lambda x: x.split("_")[1])
+                    SL_results=exp.de_results['SL_'+comparison]
+                    SL_sig = set(SL_results[SL_results.qval < 0.05].ext_gene.tolist())
+
+                    DE2_2UP = set(DE_results[(results.padj < 0.05) & (DE_results.log2FoldChange > 1)].gene_name.tolist())
+                    DE2_2DN = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
+                    DE2_15UP = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
+                    DE2_15DN = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
+
+                    exp.sig_lists[comparison]['2FC_UP'] = DE2_2UP & SL_sig
+                    exp.sig_lists[comparison]['2FC_DN'] = DE2_2DN & SL_sig
+                    exp.sig_lists[comparison]['15FC_UP'] = DE2_15UP & SL_sig
+                    exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN & SL_sig
+
+            else:
+                print('Only using significant genes called from STAR/RSEM/DESeq2 for analyses.', file=open(exp.log_file, 'a'))
+                
+                for comparison,design in exp.design.items():
+                    results=exp.de_results['DE2_'+comparison]
+                    results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
+
+                    exp.sig_lists[comparison] = {}
+                    exp.sig_lists[comparison]['2FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > 1)].gene_name.tolist())
+                    exp.sig_lists[comparison]['2FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
+                    exp.sig_lists[comparison]['15FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
+                    exp.sig_lists[comparison]['15FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
+
+            exp.tasks_complete.append('Sigs')
+            return exp
+
+        except:
+            print('Error during identificaiton of singificantly differentially expressed genes.', file=open(exp.log_file,'a'))
+            filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+            with open(filename, 'wb') as experiment:
+                pickle.dump(exp, experiment)
+            raise RaiseError('Error during identificaiton of significantly differentially expressed genes. Fix problem then resubmit with same command to continue from last completed step.')            
+
+
 def enrichr_de(exp):
     
     if 'Enrichr_DE' in exp.tasks_complete:
@@ -1200,15 +1284,6 @@ def enrichr_de(exp):
             for comparison,design in exp.design.items():
                 print('Beginning GO enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 
-                results=exp.de_results[comparison]
-                results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
-                
-                exp.sig_lists[comparison] = {}
-                exp.sig_lists[comparison]['2FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > 1)].gene_name.tolist())
-                exp.sig_lists[comparison]['2FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
-                exp.sig_lists[comparison]['15FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
-                exp.sig_lists[comparison]['15FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
-
                 for name,sig in exp.sig_lists[comparison].items():
                     gseapy.enrichr(gene_list=list(sig), 
                                    description='{comparison}_{name}_KEGG'.format(comparison=comparison,name=name),
@@ -1258,15 +1333,12 @@ def GSEA(exp):
 
             for comparison,design in exp.design.items():
                 
-                #write a python script for each comparison
-                #submit job for each comparison
-
                 print('Beginning GSEA for {comparison} found in {out}/DESeq2/GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
                 os.makedirs(out_compare, exist_ok=True)
 
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                results=exp.de_results[comparison]
+                results=exp.de_results['DE2_' + comparison]
                 results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
 
                 #convert to human homolog if mouse
@@ -1381,8 +1453,9 @@ def diff_exp(exp):
     
     exp = count_matrix(exp)
     exp = DESeq2(exp)
-    #exp = Sleuth(exp)
     exp = clustermap(exp)
+    exp = Sleuth(exp)
+    exp = sigs(exp)
     exp = enrichr_de(exp)
     exp = GSEA(exp)
     exp = PCA(exp)

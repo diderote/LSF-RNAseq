@@ -10,6 +10,7 @@ dependencies:
 - bioconductor-biobase=2.38.0=r3.4.1_0
 - bioconductor-biocgenerics=0.24.0=r3.4.1_0
 - bioconductor-biocparallel=1.12.0=r3.4.1_0
+- bioconductor-biomart=2.34.0=r3.4.1_0
 - bioconductor-delayedarray=0.4.1=r3.4.1_0
 - bioconductor-deseq2=1.18.1=r3.4.1_0
 - bioconductor-ebseq=1.18.0=r3.4.1_0
@@ -194,6 +195,8 @@ dependencies:
 - r-plogr=0.1_1=r3.4.1_0
 - r-plyr=1.8.4=r3.4.1_0
 - r-praise=1.0.0=r3.4.1_0
+- r-prettyunits=1.0.2=r3.4.1_0
+- r-progress=1.1.2=r3.4.1_0
 - r-r6=2.2.0=r3.4.1_0
 - r-rcolorbrewer=1.1_2=r3.4.1_0
 - r-rcpp=0.12.13=r3.4.1_0
