@@ -1,6 +1,25 @@
-# Instructions for using the Nimerlab RNAseq pipeline
+# Nimerlab RNAseq pipeline
 
-## This pipeline is compatable with UM Pegasus using project nimerlab
+This pipline handles processing and analyses for RNAseq data.  When fully implemented from start to finish it performs the following tasks:
+1. Fastq merging
+2. Screening for contamination of other genomes
+3. Fastq quality measurements
+4. Adapter and quality fastq trimming
+5. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
+6. Spike-in quantificaiton (if applicable)
+6. Differential expression using DESeq2 (from RSEM and spike-in), and overlap with Sleuth (Kallisto) under most conditions
+7. Heatmap of significantly differentially expressed genes
+8. GO enrichment of DE genes
+9. GSEA from test statistic ranked gene lists from DESeq2
+10. PCA analysis (and ICA analysis forthcoming)
+11. Overlap of multiple DE significant gene lists.
+
+The pipeline handles multiple entry/exit points and parse complex experimental designs and compensation types for DE.
+
+
+## Instructions for installation and use:
+
+### This pipeline is compatable with UM Pegasus using project nimerlab
 
 1. Download https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh to your nethome folder.
 2. Install miniconda: 'bash ~/Miniconda3-latest-Linux-x86_64.sh'
