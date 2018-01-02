@@ -192,7 +192,7 @@ def parse_yaml():
             if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
                 exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
                                                header= 0, index_col=0, sep="\t")
-            exp.de_sig_overlap == False
+            exp.de_sig_overlap = False
             else:
                 raise IOError("Count Matrix Not Found.")    
             print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
