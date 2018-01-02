@@ -15,6 +15,7 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 11. Overlap of multiple DE significant gene lists.
 
 The pipeline handles multiple entry/exit points and parse complex experimental designs and compensation types for DE.
+In case of error, the pipeline restarts from the last completed step. 
 
 
 ## Instructions for installation and use:
@@ -31,3 +32,4 @@ The pipeline handles multiple entry/exit points and parse complex experimental d
 5. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq' into your run folder.
 6. From your run folder, run analysis with this command (replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
 	- bsub -q general -n 1 -R 'rusage[mem=1000]' -W 120:00 -o RNAseq.out -e RNAseq.err <<< 'module rm python,share-rpms65;source activate RNAseq;./RNAseq -f RNAseq_experimental_file.yml' 
+7. In case of error, use the above command to pick up from last completed step.
