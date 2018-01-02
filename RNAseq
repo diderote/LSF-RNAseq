@@ -1133,7 +1133,7 @@ def Sleuth(exp):
                 print(session(), file=open(exp.log_file, 'a'))    
                 print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             else:
-                print('Not performing slueth differential expression analysis.' file=open(exp.log_file,'a'))
+                print('Not performing slueth differential expression analysis.', file=open(exp.log_file,'a'))
 
             exp.tasks_complete.append('Sleuth')
             return exp
