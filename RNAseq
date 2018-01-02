@@ -43,7 +43,7 @@ class Experiment(object):
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
                   tasks_complete,de_results,sig_lists,overlap_results,
-                  exp.de_sig_overlap
+                  de_sig_overlap
                  ):
         self.scratch = scratch
         self.date = date
@@ -72,7 +72,7 @@ class Experiment(object):
         self.de_results = de_results
         self.sig_lists=sig_lists
         self.overlap_results=overlap_results
-        self.exp.de_sig_overlap
+        self.de_sig_overlap
 
 def new_experiment():
     experiment = Experiment(scratch = '',
@@ -880,7 +880,7 @@ def kallisto(exp):
                 for number,sample in exp.samples.items():
 
                     kal_out = exp.scratch + 'Kallisto_results/' + sample + '/'
-                    os.makedirs(kal_out, exist_ok=true)
+                    os.makedirs(kal_out, exist_ok=True)
 
                     if 'abundance.tsv' in glob.glob(kal_out + '*.tsv'):
                         pass 
