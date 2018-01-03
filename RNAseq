@@ -1373,7 +1373,7 @@ def GSEA(exp):
                 results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=True, index=True, sep="\t")
 
                 #make gsea subission python script
-                header='#!/usr/bin/env python \n import pandas as pd \n import gseapy\n'
+                header='#!/usr/bin/env python \nimport pandas as pd \nimport gseapy\n'
                 res_py="results=pd.read_csv('{out_compare}/{comparison}.rnk', header=0, index_col=0, sep='{t}')".format(out_compare=out_compare, comparison=comparison, t=r'\t')
                 gsea_py=''
                 gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
@@ -1434,7 +1434,7 @@ def PCA(exp):
             for comparison,design in exp.designs.items():
                 print('Starting PCA analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 pca = PCA(n_components=2)
-                bpca = bpca=pca.fit_transform(exp.de_results[comparison + '_vst'].T)
+                bpca = bpca=pca.fit_transform(exp.de_results[comparison + '_vst'].drop('gene_name', axis=1).T)
                 pca_score = pca.explained_variance_ratio_
                 bpca_df = pd.DataFrame(bpca)
                 bpca_df.index = exp.de_results[comparison + '_vst'].T.index
