@@ -798,13 +798,14 @@ def rsem(exp):
         try:    
             print('Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
-            os.makedirs(exp.scratch + 'RSEM_results/', exist_ok=True)
-            os.chdir(exp.scratch + 'RSEM_results/')        
+            RSEM_out = exp.scratch + 'RSEM_results/'
+            os.makedirs(RSEM_out, exist_ok=True)
+            os.chdir(RSEM_out)        
 
             scan=0
             while scan < 2: #Loop twice to make sure source activate didn't fail the first time
                 for number,sample in exp.samples.items():      
-                    if '{sample}.rsem.bw'.format(sample=sample) in glob.glob(exp.scratch + 'RSEM_results/'+ '*.bw'):
+                    if '{loc}{sample}.rsem.bw'.format(loc=RSEM_out,sample=sample) in glob.glob(RSEM_out + '*.bw'):
                         pass
                     else:
                         print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
@@ -878,7 +879,7 @@ def kallisto(exp):
                     kal_out = exp.scratch + 'Kallisto_results/' + sample + '/'
                     os.makedirs(kal_out, exist_ok=True)
 
-                    if 'abundance.tsv' in glob.glob(kal_out + '*.tsv'):
+                    if '{loc}abundance.tsv'.format(loc=kal_out) in glob.glob(kal_out + '*.tsv'):
                         pass 
                     
                     else:   
@@ -906,8 +907,8 @@ def kallisto(exp):
                                                   )
                                          )
 
-                    #Wait for jobs to finish
-                    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                #Wait for jobs to finish
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
                     
                 scan += 1
 
