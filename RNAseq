@@ -1367,23 +1367,21 @@ def GSEA(exp):
                 if exp.genome == 'mm10':
                     results['gene_name']=results.gene_name.apply(mouse2human_dict)
 
-                results.index = results.gene_name
                 results.sort_values(by='stat', ascending=False, inplace=True)
+                results.index = results.gene_name
+                results = results.stat
                 results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=True, index=True, sep="\t")
 
                 #make gsea subission python script
-                cmd_py = '''
-                #!/usr/bin/env python
-                import pandas
-                import gseapy
-                results=pd.read_csv('{out_compare}/{comparison}.rnk', header=0, index_col=0, sep="\t")
-                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/h.all.v6.1.symbols.gmt', outdir={out_compare})
-                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cp.kegg.v6.1.symbols.gmt', outdir={out_compare})
-                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.bp.v6.1.symbols.gmt', outdir={out_compare})
-                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c5.mf.v6.1.symbols.gmt', outdir={out_compare})
-                gseapy.prerank(rnk=results.stat, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/c2.cgp.v6.1.symbols.gmt', outdir={out_compare})
-                '''.format(out_compare=out_compare, comparison=comparison)
-                job_path_name = '{out_compare}/{comparison}_GSEA.py'
+                header='#!/usr/bin/env python \n import pandas as pd \n import gseapy\n'
+                res_py="results=pd.read_csv('{out_compare}/{comparison}.rnk', header=0, index_col=0, sep='{t}')".format(out_compare=out_compare, comparison=comparison, t=r'\t')
+                gsea_py=''
+                gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
+                for x in gmts:
+                    gsea_py = gsea_py + "\ngseapy.prerank(rnk=results, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/{x}.v6.1.symbols.gmt', outdir='{out_compare}')".format(x=x, out_compare=out_compare)
+                cmd_py = header + res_py + gsea_py
+
+                job_path_name = '{out_compare}/{comparison}_GSEA.py'.format(out_compare=out_compare, comparison=comparison)
                 write_job = open(job_path_name, 'w')
                 write_job.write(cmd_py)
                 write_job.close()
@@ -1433,7 +1431,7 @@ def PCA(exp):
             out_dir = exp.scratch + 'DESeq2_results/PCA/'
             os.makedirs(out_dir, exist_ok=True)
             
-            for comparison,design in exp.design.items():
+            for comparison,design in exp.designs.items():
                 print('Starting PCA analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 pca = PCA(n_components=2)
                 bpca = bpca=pca.fit_transform(exp.de_results[comparison + '_vst'].T)
