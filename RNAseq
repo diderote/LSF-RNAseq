@@ -1113,7 +1113,7 @@ def Sleuth(exp):
             dplyr = importr('dplyr', on_conflict="warn")
             session=r("sessionInfo")
             out_dir= exp.scratch + 'Sleuth_results/'
-            kal_dir= exp.cratch + 'Kallisto/'
+            kal_dir= exp.scratch + 'Kallisto/'
             os.makedirs(out_dir, exist_ok=True)
 
             for comparison,design in exp.designs.items():
