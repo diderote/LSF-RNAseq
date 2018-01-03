@@ -1249,6 +1249,8 @@ def clustermap(exp):
 
     else:
         try:
+            import matplotlib
+            matplotlib.use('agg')
             import seaborn as sns
             
             out_dir=exp.scratch + 'Heatmaps/'
@@ -1256,16 +1258,24 @@ def clustermap(exp):
             
             for comparison,design in exp.designs.items():
                 vst = exp.de_results[comparison + '_vst']
+                vst['gene_name']=vst.index
+                vst['gene_name']=vst.gene_name.apply(lambda x: x.split("_")[1])
 
                 sig = list(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
-                CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
-                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-            
+                if len(sig) == 0:
+                    print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                else:
+                    CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
+                    CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+                    CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+        
                 sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
-                CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)], z_score=0, method='complete', cmap='RdBu_r')
-                CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-                CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+                if len(sig15) == 0:
+                    print('There are no significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                else:
+                    CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)], z_score=0, method='complete', cmap='RdBu_r')
+                    CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+                    CM15.savefig(exp.scratch + '{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
             
             exp.tasks_complete.append('Heatmaps')
             print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1289,30 +1299,32 @@ def enrichr_de(exp):
 
             import gseapy
             
-            out_dir = exp.scratch + 'DESeq2_results/enrichr'
+            out_dir = exp.scratch + 'Enrichr'
             os.makedirs(out_dir, exist_ok=True)
             
             for comparison,design in exp.designs.items():
                 print('Beginning GO enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 
                 for name,sig in exp.sig_lists[comparison].items():
-                    gseapy.enrichr(gene_list=list(sig), 
-                                   description='{comparison}_{name}_KEGG'.format(comparison=comparison,name=name),
-                                   gene_sets='KEGG_2016', 
-                                   outdir=out_dir
-                                  )
-                    gseapy.enrichr(gene_list=list(sig), 
-                                   description='{comparison}_{name}_GO_biological_process'.format(comparison=comparison,name=name), 
-                                   gene_sets='GO_Biological_Process_2017b', 
-                                   outdir=out_dir
-                                  )
-                    gseapy.enrichr(gene_list=list(sig), 
-                                   description='{comparison}_{name}_GO_molecular_function'.format(comparison=comparison,name=name), 
-                                   gene_sets='GO_Molecular_Function_2017b', 
-                                   outdir=out_dir
-                                  )
+                    if len(sig) == 0:
+                        print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring Enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
+                    else:
+                        gseapy.enrichr(gene_list=list(sig), 
+                                       description='{comparison}_{name}_KEGG'.format(comparison=comparison,name=name),
+                                       gene_sets='KEGG_2016', 
+                                       outdir=out_dir
+                                      )
+                        gseapy.enrichr(gene_list=list(sig), 
+                                       description='{comparison}_{name}_GO_biological_process'.format(comparison=comparison,name=name), 
+                                       gene_sets='GO_Biological_Process_2017b', 
+                                       outdir=out_dir
+                                      )
+                        gseapy.enrichr(gene_list=list(sig), 
+                                       description='{comparison}_{name}_GO_molecular_function'.format(comparison=comparison,name=name), 
+                                       gene_sets='GO_Molecular_Function_2017b', 
+                                       outdir=out_dir
+                                      )
                         
-            
             exp.tasks_complete.append('Enrichr_DE')
             print('Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
@@ -1335,7 +1347,7 @@ def GSEA(exp):
 
             import gseapy
             
-            out_dir = exp.scratch + 'DESeq2_results/GSEA'
+            out_dir = exp.scratch + 'DESeq2_GSEA'
             os.makedirs(out_dir, exist_ok=True)
 
             if exp.genome == 'mm10':
