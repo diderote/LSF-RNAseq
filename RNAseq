@@ -1051,14 +1051,17 @@ def DESeq2(exp):
                     if len(ERCC_vector) == len(deseq2_vector):
                         for x in range(len(ERCC_vector)):
                             if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
-                                print('ERCC spike is greater than 10 percent different than deseq2 size factor for {comparison}.  Will not perform Sleuth overlap for significance. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                                print('ERCC spike ({x} in list) is greater than 10 percent different than deseq2 size factor for {comparison}.  Will not perform Sleuth overlap for significance. \n'.format(x=x+1,comparison=comparison), file=open(exp.log_file,'a'))
                                 print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
                                 print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
                                 print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
                                 exp.de_sig_overlap[comparison]=False
                                 break
                             else:
-                                pass
+                                print('ERCC spike-in is comparable to DESeq2 size-factor, using DESeq2 scaling for {comparison}.  Will perform Sleuth overlap for significance. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                                print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
+                                print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
+                                print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
                     else:
                         RaiseError('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison))
 
@@ -1106,6 +1109,7 @@ def Sleuth(exp):
 
             import pandas as pd
             from rpy2.robjects.packages import importr
+            import rpy2.robjects as ro
             from rpy2.robjects import pandas2ri, r, globalenv, Formula
             pandas2ri.activate()
             sleuth = importr('sleuth') 
@@ -1113,7 +1117,7 @@ def Sleuth(exp):
             dplyr = importr('dplyr', on_conflict="warn")
             session=r("sessionInfo")
             out_dir= exp.scratch + 'Sleuth_results/'
-            kal_dir= exp.scratch + 'Kallisto/'
+            kal_dir= exp.scratch + 'Kallisto_results/'
             os.makedirs(out_dir, exist_ok=True)
 
             for comparison,design in exp.designs.items():
@@ -1125,7 +1129,7 @@ def Sleuth(exp):
                     for name in design['colData'].sample_names.tolist():
                         path.append(kal_dir + name)
 
-                    if compensation in design['colData'].columns:
+                    if 'compensation' in design['colData'].columns.tolist():
                         s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
                                             'compensation': design['colData'].compensation.tolist(),
                                             'condition': design['colData'].main_comparison.tolist(),
@@ -1147,13 +1151,16 @@ def Sleuth(exp):
                         condition=Formula('~ condition')
                         reduced = Formula('~1')
 
+                    
+
+                    globalenv["s2c"] = s2c
                     r('s2c$path = as.character(s2c$path)')
                     s2c = globalenv["s2c"]
                         
                     if exp.genome == 'mm10':
                         mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
                     elif exp.genome == 'hg38':
-                        mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'ensembl.org')
+                        mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
                     else:
                        raise RaiseError('Error in sleuth, pipeline only handles hg38 and mm10')
 
@@ -1204,10 +1211,10 @@ def sigs(exp):
                     SL_results=exp.de_results['SL_'+comparison]
                     SL_sig = set(SL_results[SL_results.qval < 0.05].ext_gene.tolist())
 
-                    DE2_2UP = set(DE_results[(results.padj < 0.05) & (DE_results.log2FoldChange > 1)].gene_name.tolist())
-                    DE2_2DN = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
-                    DE2_15UP = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
-                    DE2_15DN = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
+                    DE2_2UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > 1)].gene_name.tolist())
+                    DE2_2DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -1)].gene_name.tolist())
+                    DE2_15UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > .585)].gene_name.tolist())
+                    DE2_15DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -.585)].gene_name.tolist())
 
                     exp.sig_lists[comparison]['2FC_UP'] = DE2_2UP & SL_sig
                     exp.sig_lists[comparison]['2FC_DN'] = DE2_2DN & SL_sig
