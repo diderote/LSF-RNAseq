@@ -1110,7 +1110,7 @@ def Sleuth(exp):
             pandas2ri.activate()
             sleuth = importr('sleuth') 
             biomart = importr('biomaRt')
-            dplyr = importr('dplyr')
+            dplyr = importr('dplyr', on_conflict="warn")
             session=ro.r("sessionInfo")
             out_dir= exp.scratch + 'Sleuth_results/'
             kal_dir= exp.cratch + 'Kallisto/'
