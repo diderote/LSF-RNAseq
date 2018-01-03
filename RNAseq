@@ -24,7 +24,6 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.yml
  
 To do:
-    - check kallisto output memory
     - ICA with chi-square with de groups
 
 '''
@@ -102,7 +101,6 @@ def new_experiment():
                             sig_lists={},
                             overlap_results={},
                             de_sig_overlap = True
-                            sig_lists={}
                            )
     return experiment
 
