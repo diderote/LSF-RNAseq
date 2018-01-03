@@ -1111,7 +1111,7 @@ def Sleuth(exp):
             sleuth = importr('sleuth') 
             biomart = importr('biomaRt')
             dplyr = importr('dplyr', on_conflict="warn")
-            session=ro.r("sessionInfo")
+            session=r("sessionInfo")
             out_dir= exp.scratch + 'Sleuth_results/'
             kal_dir= exp.cratch + 'Kallisto/'
             os.makedirs(out_dir, exist_ok=True)
