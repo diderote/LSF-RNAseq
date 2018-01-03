@@ -1362,7 +1362,6 @@ def GSEA(exp):
 
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 results=exp.de_results['DE2_' + comparison]
-                results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
 
                 #convert to human homolog if mouse
                 if exp.genome == 'mm10':
