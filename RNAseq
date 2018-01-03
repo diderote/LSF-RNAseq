@@ -100,7 +100,7 @@ def new_experiment():
                             de_results = {},
                             sig_lists={},
                             overlap_results={},
-                            de_sig_overlap = True
+                            de_sig_overlap = {}
                            )
     return experiment
 
@@ -168,7 +168,7 @@ def parse_yaml():
             print('Pipeline starting with: ' + str(exp.start)+ '\n', file=open(exp.log_file, 'a'))
 
         if exp.start == 'Counts':
-            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth','Sigs']
+            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
        
         #Start Fastq
         if yml['Startpoint']['Fastq']['Start']:
@@ -190,7 +190,6 @@ def parse_yaml():
             if os.path.exists(yml['Startpoint']['Gene_Counts']['Count_matrix_location']):
                 exp.count_matrix = pd.read_csv(yml['Startpoint']['Gene_Counts']['Count_matrix_location'], 
                                                header= 0, index_col=0, sep="\t")
-                exp.de_sig_overlap = False
             else:
                 raise IOError("Count Matrix Not Found.")    
             print("Count matrix found at " + yml['Startpoint']['Gene_Counts']['Count_matrix_location']+ '\n', file=open(exp.log_file, 'a'))
@@ -349,6 +348,14 @@ def parse_yaml():
                         print(str(exp.designs)+ '\n', file=open(exp.log_file, 'a')) 
                     else:
                         raise ValueError(error)
+
+        #Initialize DE sig overlaps
+        for comparison, design in exp.designs.items():
+            if exp.start == 'Counts':
+                exp.de_sig_overlap[comparison] = False
+            else:
+                exp.de_sig_overlap[comparison] = True
+            
         
         #DE overlaps
         if yml['Overlaps'] == None:
@@ -1044,8 +1051,11 @@ def DESeq2(exp):
                     if len(ERCC_vector) == len(deseq2_vector):
                         for x in range(len(ERCC_vector)):
                             if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
-                                print('ERCC spike is greater than 10 percent different than deseq2 size factor.  Will not perform Sleuth overlap for significance.', file=open(exp.log_file,'a'))
-                                exp.de_sig_overlap = False
+                                print('ERCC spike is greater than 10 percent different than deseq2 size factor for {comparison}.  Will not perform Sleuth overlap for significance. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                                print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
+                                print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
+                                print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
+                                exp.de_sig_overlap[comparison]=False
                                 break
                             else:
                                 pass
@@ -1057,6 +1067,7 @@ def DESeq2(exp):
                 exp.de_results['DE2_' + comparison].index = data.index
                 exp.de_results['DE2_' + comparison].sort_values(by='padj', ascending=True, inplace=True)
                 exp.de_results['DE2_' + comparison]['gene_name']=exp.de_results['DE2_'+comparison].index
+                exp.de_results['DE2_' + comparison]['gene_name']=exp.de_results['DE2_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
                 exp.de_results['DE2_' + comparison].to_csv(out_dir + comparison + '-DESeq2-results.txt', 
                                                            header=True, 
                                                            index=True, 
@@ -1092,25 +1103,24 @@ def Sleuth(exp):
 
     else:
         try:
-            #check if ERCC different than DESeq2.
-            if exp.de_sig_overlap:
 
-                out_dir= exp.scratch + 'Sleuth_results/'
-                kal_dir= exp.cratch + 'Kallisto/'
-                os.makedirs(out_dir, exist_ok=True)
+            import pandas as pd
+            from rpy2.robjects.packages import importr
+            from rpy2.robjects import pandas2ri, r, globalenv, Formula
+            pandas2ri.activate()
+            sleuth = importr('sleuth') 
+            biomart = importr('biomart')
+            dplyr = importr('dplry')
+            session=ro.r("sessionInfo")
+            out_dir= exp.scratch + 'Sleuth_results/'
+            kal_dir= exp.cratch + 'Kallisto/'
+            os.makedirs(out_dir, exist_ok=True)
 
-                print('Beginning Sleuth differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            for comparison,design in exp.designs.items():
+                if exp.de_sig_overlap[comparison]:
 
-                import pandas as pd
-                from rpy2.robjects.packages import importr
-                from rpy2.robjects import pandas2ri, r, globalenv, Formula
-                pandas2ri.activate()
-                sleuth = importr('sleuth') 
-                biomart = importr('biomart')
-                dplyr = importr('dplry')
-                session=ro.r("sessionInfo")
+                    print('Beginning Sleuth differential expression analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
-                for comparison,design in exp.designs.items():
                     path = []
                     for name in design['colData'].sample_names.tolist():
                         path.append(kal_dir + name)
@@ -1139,7 +1149,7 @@ def Sleuth(exp):
 
                     r('s2c$path = as.character(s2c$path)')
                     s2c = globalenv["s2c"]
-                    
+                        
                     if exp.genome == 'mm10':
                         mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
                     elif exp.genome == 'hg38':
@@ -1159,10 +1169,12 @@ def Sleuth(exp):
                     exp.de_results['SL_' + comparison] = pandas2ri.ri2py(sleuth_table)
                     exp.de_results['SL_' + comparison].to_csv('{out_dir}{comparison}_slueth_results.txt'.format(out_dir=out_dir, comparison=comparison), header=True, index=True, sep="\t")
 
+                else:
+                    print('Not performing slueth differential expression analysis for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
+
                 print(session(), file=open(exp.log_file, 'a'))    
                 print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-            else:
-                print('Not performing slueth differential expression analysis.', file=open(exp.log_file,'a'))
+            
 
             exp.tasks_complete.append('Sleuth')
             return exp
@@ -1181,13 +1193,14 @@ def sigs(exp):
 
     else:
         try:
-            if exp.de_sig_overlap:
-                print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2.', file=open(exp.log_file,'a'))
+            
+            for comparison,design in exp.designs.items():
 
-                for comparison,design in exp.designs.items():
+                if exp.de_sig_overlap[comparison]:
+                    print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2 for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
+               
                     exp.sig_lists[comparison] = {}
                     DE_results=exp.de_results['DE2_'+comparison]
-                    DE_results['gene_name']=DE_results.gene_name.apply(lambda x: x.split("_")[1])
                     SL_results=exp.de_results['SL_'+comparison]
                     SL_sig = set(SL_results[SL_results.qval < 0.05].ext_gene.tolist())
 
@@ -1201,12 +1214,10 @@ def sigs(exp):
                     exp.sig_lists[comparison]['15FC_UP'] = DE2_15UP & SL_sig
                     exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN & SL_sig
 
-            else:
-                print('Only using significant genes called from STAR/RSEM/DESeq2 for analyses.', file=open(exp.log_file, 'a'))
+                else:
+                    print('Only using significant genes called from STAR/RSEM/DESeq2 for {comparison} analyses.'.format(comparison=comparison), file=open(exp.log_file, 'a'))
                 
-                for comparison,design in exp.designs.items():
                     results=exp.de_results['DE2_'+comparison]
-                    results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
 
                     exp.sig_lists[comparison] = {}
                     exp.sig_lists[comparison]['2FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > 1)].gene_name.tolist())
@@ -1231,7 +1242,6 @@ def clustermap(exp):
 
     else:
         try:
-
             import seaborn as sns
             
             out_dir=exp.scratch + 'Heatmaps/'
