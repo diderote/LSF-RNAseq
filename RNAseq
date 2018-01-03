@@ -1356,7 +1356,7 @@ def GSEA(exp):
 
             for comparison,design in exp.designs.items():
                 
-                print('Beginning GSEA for {comparison} found in {out}/DESeq2/GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
+                print('Beginning GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
                 os.makedirs(out_compare, exist_ok=True)
 
@@ -1396,13 +1396,17 @@ def GSEA(exp):
                 exp.job_id.append(send_job(command_list=command_list, 
                                            job_name= comparison + '_GSEA',
                                            job_log_folder=exp.job_folder,
-                                           q= 'general',
-                                           mem=1000
+                                           q= 'bigmem',
+                                           mem=30000
                                            )
                                   )
             
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)    
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+
+            for comparison,design in exp.designs.items():
+                if '{loc}/{comparison}/gseapy.prerank.gene_sets.report.csv'.format(loc=out_dir, comparison=comparison) not in glob.glob('{loc}/{comparison}/*.csv'.format(loc=out_dir, comparison=comparison))
+                    raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison))
 
             exp.tasks_complete.append('GSEA')
             print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
