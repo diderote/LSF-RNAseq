@@ -21,8 +21,8 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEAL
 
 
 Reads an experimetnal design yaml file (Version 0.1).
-Requires a conda environment 'RNAseq' made from RNAseq.yml
- 
+Requires a conda environment 'RNAseq' made from RNAseq.
+ yml
 To do:
     - ICA with chi-square with de groups
 
@@ -1013,11 +1013,11 @@ def DESeq2(exp):
             count_matrix = exp.count_matrix
             dds={}
             
-            for comparison,design in exp.design.items():
+            for comparison,designs in exp.designs.items():
                 print('Beginning ' + comparison + ': ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 colData=design['colData']
                 design=design['design']
-                data=count_matrix[design['all_samples']]
+                data=count_matrix[designs['all_samples']]
                 data = counts[counts.sum(axis=1) > 1]
                 data = round(data).astype(int)
                 dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
@@ -1110,7 +1110,7 @@ def Sleuth(exp):
                 dplyr = importr('dplry')
                 session=ro.r("sessionInfo")
 
-                for comparison,design in exp.design.items():
+                for comparison,design in exp.designs.items():
                     path = []
                     for name in design['colData'].sample_names.tolist():
                         path.append(kal_dir + name)
@@ -1184,7 +1184,7 @@ def sigs(exp):
             if exp.de_sig_overlap:
                 print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2.', file=open(exp.log_file,'a'))
 
-                for comparison,design in exp.design.items():
+                for comparison,design in exp.designs.items():
                     exp.sig_lists[comparison] = {}
                     DE_results=exp.de_results['DE2_'+comparison]
                     DE_results['gene_name']=DE_results.gene_name.apply(lambda x: x.split("_")[1])
@@ -1204,7 +1204,7 @@ def sigs(exp):
             else:
                 print('Only using significant genes called from STAR/RSEM/DESeq2 for analyses.', file=open(exp.log_file, 'a'))
                 
-                for comparison,design in exp.design.items():
+                for comparison,design in exp.designs.items():
                     results=exp.de_results['DE2_'+comparison]
                     results['gene_name']=results.gene_name.apply(lambda x: x.split("_")[1])
 
@@ -1237,7 +1237,7 @@ def clustermap(exp):
             out_dir=exp.scratch + 'Heatmaps/'
             os.makedirs(out_dir, exist_ok=True)
             
-            for comparison,design in exp.design.items():
+            for comparison,design in exp.designs.items():
                 vst = exp.de_results[comparison + '_vst']
 
                 sig = list(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
@@ -1275,7 +1275,7 @@ def enrichr_de(exp):
             out_dir = exp.scratch + 'DESeq2_results/enrichr'
             os.makedirs(out_dir, exist_ok=True)
             
-            for comparison,design in exp.design.items():
+            for comparison,design in exp.designs.items():
                 print('Beginning GO enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 
                 for name,sig in exp.sig_lists[comparison].items():
@@ -1325,7 +1325,7 @@ def GSEA(exp):
                 mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
                 mouse2human_dict=mouse2human[1].to_dict()
 
-            for comparison,design in exp.design.items():
+            for comparison,design in exp.designs.items():
                 
                 print('Beginning GSEA for {comparison} found in {out}/DESeq2/GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
