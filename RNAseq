@@ -1243,7 +1243,7 @@ def clustermap(exp):
                 sig = list(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
                 CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)], z_score=0, method='complete', cmap='RdBu_r')
                 CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dircomparison=comparison), dpi=200)
+                CM.savefig(exp.scratch + '{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
             
                 sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
                 CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)], z_score=0, method='complete', cmap='RdBu_r')
