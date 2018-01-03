@@ -1015,8 +1015,8 @@ def DESeq2(exp):
             
             for comparison,designs in exp.designs.items():
                 print('Beginning ' + comparison + ': ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                colData=design['colData']
-                design=design['design']
+                colData=designs['colData']
+                design=designs['design']
                 data=count_matrix[designs['all_samples']]
                 data = counts[counts.sum(axis=1) > 1]
                 data = round(data).astype(int)
@@ -1030,7 +1030,7 @@ def DESeq2(exp):
                 
                 if exp.norm == 'ERCC':
                     print('Determining ERCC size factors...'+ '\n', file=open(exp.log_file, 'a'))
-                    ERCC_data = exp.spike_counts[design['all_samples']]
+                    ERCC_data = exp.spike_counts[designs['all_samples']]
                     ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
                     ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
                     deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds)
