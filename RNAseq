@@ -1039,8 +1039,8 @@ def DESeq2(exp):
                     dds[comparison] = deseq.DESeq(dds[comparison])
 
                     #compare size factors from DESeq2 and ERCC for inconsistencies
-                    ERCC_vector=pandas2ri.ri2py_vector(ERCC_size)
-                    deseq2_vector=pandas2ri.ri2py_vector(deseq2_size)
+                    ERCC_vector=pandas2ri.ri2py_vector(sizeFactors(ERCC_size))
+                    deseq2_vector=pandas2ri.ri2py_vector(sizeFactors(deseq2_size))
                     if len(ERCC_vector) == len(deseq2_vector):
                         for x in range(len(ERCC_vector)):
                             if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
