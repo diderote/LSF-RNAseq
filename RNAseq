@@ -1406,7 +1406,7 @@ def GSEA(exp):
 
             for comparison,design in exp.designs.items():
                 if '{loc}/{comparison}/gseapy.prerank.gene_sets.report.csv'.format(loc=out_dir, comparison=comparison) not in glob.glob('{loc}/{comparison}/*.csv'.format(loc=out_dir, comparison=comparison))
-                    raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison))
+                    raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison)):
 
             exp.tasks_complete.append('GSEA')
             print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
