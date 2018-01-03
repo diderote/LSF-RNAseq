@@ -1457,9 +1457,9 @@ def diff_exp(exp):
     
     exp = count_matrix(exp)
     exp = DESeq2(exp)
-    exp = clustermap(exp)
     exp = Sleuth(exp)
     exp = sigs(exp)
+    exp = clustermap(exp)
     exp = enrichr_de(exp)
     exp = GSEA(exp)
     exp = PCA(exp)
