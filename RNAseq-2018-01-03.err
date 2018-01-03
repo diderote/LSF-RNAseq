@@ -1,4 +1,0 @@
-  File "./RNAseq", line 1408
-    if '{loc}/{comparison}/gseapy.prerank.gene_sets.report.csv'.format(loc=out_dir, comparison=comparison) not in glob.glob('{loc}/{comparison}/*.csv'.format(loc=out_dir, comparison=comparison))
-                                                                                                                                                                                                 ^
-SyntaxError: invalid syntax
