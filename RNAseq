@@ -1033,7 +1033,7 @@ def DESeq2(exp):
                     ERCC_data = exp.spike_counts[designs['all_samples']]
                     ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
                     ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
-                    deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds)
+                    deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds[comparison])
                     sizeFactors=ro.r("sizeFactors")
                     dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
                     dds[comparison] = deseq.DESeq(dds[comparison])
