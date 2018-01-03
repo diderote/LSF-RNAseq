@@ -1016,9 +1016,9 @@ def DESeq2(exp):
             for comparison,designs in exp.designs.items():
                 print('Beginning ' + comparison + ': ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 colData=designs['colData']
-                design=designs['design']
+                design=ro.Formula(designs['design'])
                 data=count_matrix[designs['all_samples']]
-                data = counts[counts.sum(axis=1) > 1]
+                data = data[data.sum(axis=1) > 1]
                 data = round(data).astype(int)
                 dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
                                                                colData=colData,
