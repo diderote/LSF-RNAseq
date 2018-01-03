@@ -1109,8 +1109,8 @@ def Sleuth(exp):
             from rpy2.robjects import pandas2ri, r, globalenv, Formula
             pandas2ri.activate()
             sleuth = importr('sleuth') 
-            biomart = importr('biomart')
-            dplyr = importr('dplry')
+            biomart = importr('biomaRt')
+            dplyr = importr('dplyr')
             session=ro.r("sessionInfo")
             out_dir= exp.scratch + 'Sleuth_results/'
             kal_dir= exp.cratch + 'Kallisto/'
