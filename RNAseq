@@ -42,7 +42,7 @@ class Experiment(object):
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
                   tasks_complete,de_results,sig_lists,overlap_results,
-                  de_sig_overlap, sig_lists
+                  de_sig_overlap
                  ):
         self.scratch = scratch
         self.date = date
@@ -72,7 +72,6 @@ class Experiment(object):
         self.sig_lists=sig_lists
         self.overlap_results=overlap_results
         self.de_sig_overlap = de_sig_overlap
-        self.sig_lists=sig_lists
 
 def new_experiment():
     experiment = Experiment(scratch = '',
