@@ -902,8 +902,8 @@ def kallisto(exp):
                         exp.job_id.append(send_job(command_list=command_list, 
                                                    job_name= sample + '_Kallisto',
                                                    job_log_folder=exp.job_folder,
-                                                   q= 'bigmem',
-                                                   mem=60000
+                                                   q= 'general',
+                                                   mem=10000
                                                   )
                                          )
 
