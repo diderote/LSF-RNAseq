@@ -805,23 +805,23 @@ def rsem(exp):
             scan=0
             while scan < 2: #Loop twice to make sure source activate didn't fail the first time
                 for number,sample in exp.samples.items():      
-                    if exp.genome == 'hg38':
-                        align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                        wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
-                    elif exp.genome == 'mm10':
-                        align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                        wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
-                    else:
-                        print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
-                        raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
-                     
-                    bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
-                    plot_model='rsem-plot-model {sample} {sample}.models.pdf'   
-
-                    if '{sample}.rsem.bw'.format(sample=sample) in glob.glob(exp.scratch + '*.bw'):
+                    if '{sample}.rsem.bw'.format(sample=sample) in glob.glob(exp.scratch + 'RSEM_results/'+ '*.bw'):
                         pass
                     else:
                         print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+
+                        if exp.genome == 'hg38':
+                            align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
+                            wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                        elif exp.genome == 'mm10':
+                            align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
+                            wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                        else:
+                            print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
+                            raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
+                         
+                        bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
+                        plot_model='rsem-plot-model {sample} {sample}.models.pdf'   
 
                         command_list = ['module rm python',
                                         'module rm perl',
@@ -845,10 +845,6 @@ def rsem(exp):
                 job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
                 scan += 1
-
-            stat = glob.glob(exp.scratch + '' + '*.stat')
-            for folder in stat:
-                rmtree(folder)
 
             exp.tasks_complete.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
