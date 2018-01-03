@@ -821,7 +821,7 @@ def rsem(exp):
                             raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
                          
                         bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
-                        plot_model='rsem-plot-model {sample} {sample}.models.pdf'   
+                        plot_model='rsem-plot-model {sample} {sample}.models.pdf' .format(sample=sample)  
 
                         command_list = ['module rm python',
                                         'module rm perl',
