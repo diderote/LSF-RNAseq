@@ -29,6 +29,7 @@ Differential_Expression_Groups: #For differential expression
   Exp_1: 7,8,9 #Sample numbers in Experimental Group 1
   Exp_2: 10,11,12 #Sample numbers in Experimental Group 2 (leave empty if none)
 Differential_Expression_Normalizaiton: ERCC #default 'bioinformatic', second option is 'ERCC'
+Differential_Expression_Mode: Combined # default 'Combined' is doing differential expression analysis with DESeq2 and Sleuth, second option is 'DESeq2'
 Differential_Expression_Comparisons: #Groups to compare for differential expression.  Add or remove comparisons
   Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1
   Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Compare Experimetnal groups 1 and 2 to Controls (will control for E1-E2 and C1-C2)

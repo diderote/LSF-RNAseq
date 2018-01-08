@@ -356,10 +356,11 @@ def parse_yaml():
         for comparison, design in exp.designs.items():
             if exp.start == 'Counts':
                 exp.de_sig_overlap[comparison] = False
+            elif yml['Differential_Expression_Mode'].lower() == 'deseq2':
+                exp.de_sig_overlap[comparison] = False
             else:
                 exp.de_sig_overlap[comparison] = True
             
-        
         #DE overlaps
         if yml['Overlaps'] == None:
             print('There are no overlaps to process for muliptle differential expression analyses.'+ '\n', file=open(exp.log_file, 'a'))
@@ -1385,7 +1386,7 @@ def GSEA(exp):
 
                     command_list = ['module rm python java perl',
                                     'source activate RNAseq',
-                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx512m xtools.gsea.GseaPreranked -gmx /projects/ctsi/nimerlab/DANIEL/tools/gene_sets/{set}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {out_compare}/{comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{set} -create_svgs true -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {set_dir}'.format(set=set,out_compare=out_compare,comparison=comparison,set_dir=set_dir)
+                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx512m xtools.gsea.GseaPreranked -gmx /projects/ctsi/nimerlab/DANIEL/tools/gene_sets/{set}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {out_compare}/{comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{set} -create_svgs true -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {set_dir} -gui false'.format(set=set,out_compare=out_compare,comparison=comparison,set_dir=set_dir)
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
