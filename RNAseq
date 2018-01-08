@@ -24,6 +24,9 @@ Reads an experimetnal design yaml file (Version 0.1).
 Requires a conda environment 'RNAseq' made from RNAseq.
  yml
 To do:
+    - fix PCA annotations
+    - update GSEA check after submission before proceeding
+    - rMATS
     - ICA with chi-square with de groups
 
 '''
@@ -1344,9 +1347,9 @@ def GSEA(exp):
 
     else:
         try:
-
-            import gseapy
             
+            #import gseapy
+
             out_dir = exp.scratch + 'DESeq2_GSEA'
             os.makedirs(out_dir, exist_ok=True)
 
@@ -1372,41 +1375,34 @@ def GSEA(exp):
                 results = results.stat
                 results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
 
-                #make gsea subission python script
-                header='#!/usr/bin/env python \nimport pandas as pd \nimport gseapy\n'
-                res_py="results=pd.read_csv('{out_compare}/{comparison}.rnk', header=None, index_col=0, sep='{t}')".format(out_compare=out_compare, comparison=comparison, t=r'\t')
-                gsea_py=''
-                gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
-                for x in gmts:
-                    gsea_py = gsea_py + "\ngseapy.prerank(rnk=results, gene_sets= '/projects/ctsi/nimerlab/DANIEL/tools/gene_sets/{x}.v6.1.symbols.gmt', outdir='{out_compare}')".format(x=x, out_compare=out_compare)
-                cmd_py = header + res_py + gsea_py
-
-                job_path_name = '{out_compare}/{comparison}_GSEA.py'.format(out_compare=out_compare, comparison=comparison)
-                write_job = open(job_path_name, 'w')
-                write_job.write(cmd_py)
-                write_job.close()
-                
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 
-                command_list = ['module rm python',
-                                'source activate RNAseq',
-                                'python {}'.format(job_path_name)
-                               ]
+ 
+                gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
+                for set in gmts:
+                    set_dir=out_compare + '/' + set 
+                    os.makedirs(set_dir, exist_ok=True)
 
-                exp.job_id.append(send_job(command_list=command_list, 
-                                           job_name= comparison + '_GSEA',
-                                           job_log_folder=exp.job_folder,
-                                           q= 'bigmem',
-                                           mem=30000
-                                           )
-                                  )
-            
+                    command_list = ['module rm python java perl',
+                                    'source activate RNAseq',
+                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx512m xtools.gsea.GseaPreranked -gmx /projects/ctsi/nimerlab/DANIEL/tools/gene_sets/{set}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {out_compare}/{comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{set} -create_svgs true -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {set_dir}'.format(set=set,out_compare=out_compare,comparison=comparison,set_dir=set_dir)
+                                   ]
+
+                    exp.job_id.append(send_job(command_list=command_list, 
+                                               job_name= sample + '_{comaprison}_{set}_GSEA'.format(comparison=comparison,x=x),
+                                               job_log_folder=exp.job_folder,
+                                               q= 'general',
+                                               mem=2000
+                                              )
+                                     )
+                    time.sleep(1)
+
             #Wait for jobs to finish
             job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
 
-            for comparison,design in exp.designs.items():
-                if '{loc}/{comparison}/gseapy.prerank.gene_sets.report.csv'.format(loc=out_dir, comparison=comparison) not in glob.glob('{loc}/{comparison}/*.csv'.format(loc=out_dir, comparison=comparison)):
-                    raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison)):
+            #for comparison,design in exp.designs.items():
+            #    if '{loc}/{comparison}/h.all/gseapy.prerank.gene_sets.report.csv'.format(loc=out_dir, comparison=comparison) not in glob.glob('{loc}/{comparison}/*.csv'.format(loc=out_dir, comparison=comparison)):
+            #        raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison))
 
             exp.tasks_complete.append('GSEA')
             print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1429,6 +1425,8 @@ def PCA(exp):
         try:
 
             from sklearn.decomposition import PCA
+            import matplotlib
+            matplotlib.use('agg')
             import matplotlib.pyplot as plt 
             import matplotlib.patches as mpatches
             
@@ -1455,8 +1453,8 @@ def PCA(exp):
                 red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
                 blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
-                for i,sample in enumerate(bpca_df['name'].tolist()):
-                    ax.annotate(sample, (bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points')             
+                #for i,sample in enumerate(bpca_df['name'].tolist()):
+                #    ax.annotate(sample, (bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points')             
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
                 ax.figure.savefig(out_dir, '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir, '{comparison}_PCA.svg'.format(comparison=comparison))
@@ -1485,6 +1483,13 @@ def diff_exp(exp):
     exp = PCA(exp)
     
     #ICA  
+
+    return exp
+
+def Splicing(exp):
+
+
+    
 
     return exp
 
@@ -1649,5 +1654,6 @@ exp = preprocess(exp)
 exp = align(exp)
 exp = diff_exp(exp) #finetune for cluster map
 exp = Overlaps(exp)
+exp = Splicing(exp)
 exp = final_qc(exp)
 finish(exp)
