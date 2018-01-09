@@ -33,7 +33,7 @@ import os,re,datetime,glob,pickle,time
 from shutil import copy2,copytree,rmtree
 import subprocess as sub
 import pandas as pd
-version=0.1
+version=0.2
 
 ### Make experiment class
 class Experiment(object):
