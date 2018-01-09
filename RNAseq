@@ -1627,13 +1627,19 @@ def finish(exp):
     
     import yaml
 
+    os.chdir(exp.scratch)
+    
     filename= '{out}{name}_{date}.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
     with open(filename, 'wb') as experiment:
         pickle.dump(exp, experiment) 
     
     for number,sample in exp.samples.items():
-        os.remove('{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample))
-        os.remove('{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample))
+        R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                  '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
+                 ]
+        for R in R_list:
+            if os.path.isfile(R):
+                os.remove(R)
     
     with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
         versions = yaml.load(file)
