@@ -25,7 +25,7 @@ Requires a conda environment 'RNAseq' made from RNAseq.
  yml
 To do:
     - fix PCA annotations
-    - update GSEA check after submission before proceeding
+    - rewrite enrichr to remove gseapy
     - rMATS
     - ICA with chi-square with de groups
 
@@ -855,6 +855,7 @@ def rsem(exp):
             
                 scan += 1
 
+            os.chdir(exp.scratch)
             exp.tasks_complete.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
@@ -1293,6 +1294,26 @@ def clustermap(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during heatmap generation. Fix problem then resubmit with same command to continue from last completed step.')
 
+def enrichr(gene_list, description, out_dir):
+    import gseapy
+    
+    gseapy.enrichr(gene_list=gene_list,
+                   description='{description}_KEGG'.format(description=description),
+                   gene_sets='KEGG_2016', 
+                   outdir=out_dir
+                   )
+    gseapy.enrichr(gene_list=gene_list,
+                   description='{description}_GO_biological_process'.format(description=description),
+                   gene_sets='GO_Biological_Process_2017b', 
+                   outdir=out_dir
+                  )
+    gseapy.enrichr(gene_list=gene_list, 
+                   description='{description}_GO_molecular_function'.format(description=description),
+                   gene_sets='GO_Molecular_Function_2017b', 
+                   outdir=out_dir
+                  )
+    return
+
 def enrichr_de(exp):
     
     if 'Enrichr_DE' in exp.tasks_complete:
@@ -1300,9 +1321,6 @@ def enrichr_de(exp):
 
     else:
         try:
-
-            import gseapy
-            
             out_dir = exp.scratch + 'Enrichr'
             os.makedirs(out_dir, exist_ok=True)
             
@@ -1313,22 +1331,8 @@ def enrichr_de(exp):
                     if len(sig) == 0:
                         print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring Enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
                     else:
-                        gseapy.enrichr(gene_list=list(sig), 
-                                       description='{comparison}_{name}_KEGG'.format(comparison=comparison,name=name),
-                                       gene_sets='KEGG_2016', 
-                                       outdir=out_dir
-                                      )
-                        gseapy.enrichr(gene_list=list(sig), 
-                                       description='{comparison}_{name}_GO_biological_process'.format(comparison=comparison,name=name), 
-                                       gene_sets='GO_Biological_Process_2017b', 
-                                       outdir=out_dir
-                                      )
-                        gseapy.enrichr(gene_list=list(sig), 
-                                       description='{comparison}_{name}_GO_molecular_function'.format(comparison=comparison,name=name), 
-                                       gene_sets='GO_Molecular_Function_2017b', 
-                                       outdir=out_dir
-                                      )
-                        
+                        enrichr(gene_list=list(sig), descirption='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
+
             exp.tasks_complete.append('Enrichr_DE')
             print('Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
@@ -1348,9 +1352,6 @@ def GSEA(exp):
 
     else:
         try:
-            
-            #import gseapy
-
             out_dir = exp.scratch + 'DESeq2_GSEA'
             os.makedirs(out_dir, exist_ok=True)
 
@@ -1504,7 +1505,8 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     Plots a 2 way venn.
     Saves to file.
     '''
-    
+    import matplotlib
+    matplotlib.use('agg')
     from matplotlib_venn import venn2
     import matplotlib.pyplot as plt
     
@@ -1539,8 +1541,6 @@ def overlaps(exp):
     else:
         try:
 
-            import gseapy
-            
             out_dir = exp.scratch + 'Overlaps/'
             os.makedirs(out_dir, exist_ok=True)
             
@@ -1552,31 +1552,26 @@ def overlaps(exp):
                 for name in names:
                     key= '{overlap}_{name}'.format(overlap=overlap,name=name)
                     exp.overlap_results[key] = exp.sig_lists[comparison_list[0]][name] & exp.sig_lists[comparison_list[1]][name] 
-                    venn = pd.Series([len([comparison_list[0]][name])-len(exp.overlap_results[key]),
-                                      len([comparison_list[1]][name])-len(exp.overlap_results[key]),
-                                      len(exp.overlap_results[key])
-                                     ],
-                                     index= [comparison_list] + ['Overlap']
-                                    )
-                    plot_venn2(venn, key, out_dir)
-                           
+                    
+                    if len(exp.overlap_results[key]) == 0:
+                        print('{overlap}_{name} have no overlapping genes'.format(overlap=overlap,name=name), file=open(exp.log_file,'a'))
+                    else:
+                        venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results[key]),
+                                          len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results[key]),
+                                          len(exp.overlap_results[key])
+                                         ],
+                                         index= comparison_list + ['Overlap']
+                                        )
+                        plot_venn2(venn, key, out_dir)
+                    
             for name,sig in exp.overlap_results.items():
-                print('Perfomring GO enrichment for ' + name + ' overlaps: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                gseapy.enrichr(gene_list=list(sig),
-                               description='{name}_overlap_KEGG'.format(name=name),
-                               gene_sets='KEGG_2016', 
-                               outdir=out_dir
-                              )
-                gseapy.enrichr(gene_list=list(sig),
-                               description='{name}_overlap_GO_biological_process'.format(name=name),
-                               gene_sets='GO_Biological_Process_2017b', 
-                               outdir=out_dir
-                              )
-                gseapy.enrichr(gene_list=list(sig), 
-                               description='{name}_overlap_GO_molecular_function'.format(name=name),
-                               gene_sets='GO_Molecular_Function_2017b', 
-                               outdir=out_dir
-                              )
+
+                if len(sig) == 0:
+                    print('Not performing GO enrichment for {name} overlaps since there are no overlapping genes./\n'.format(name=name), file=open(exp.log_file, 'a'))
+                else:
+                    print('Performing GO enrichment for {name} overlaps: {time} \n'.format(name=name,time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))                    
+                    enrichr(gene_list=list(sig), description='{name)_overlap'.format(name=name),out_dir=out_dir)
+
             exp.tasks_complete.append('Overlaps')
             print('Overlap analysis complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                            
@@ -1599,9 +1594,11 @@ def final_qc(exp):
 
             print('Beginning final qc: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
+            folder_list=glob.glob(exp.scratch + '/*')
+            folders= " ".join(folder_list)
             command_list = ['module rm python',
                             'source activate RNAseq',
-                            'multiqc {folders}'.format(folders=exp.scratch)
+                            'multiqc {folders}'.format(folders=folders)
                            ]
             
             exp.job_id.append(send_job(command_list=command_list, 
@@ -1638,19 +1635,21 @@ def finish(exp):
         os.remove('{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample))
         os.remove('{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample))
     
-    copytree(exp.scratch, exp.outdir)
-    
-    print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
-    print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
-    print('Moved all files into {out}: '.format(out=exp.outdir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-
     with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
         versions = yaml.load(file)
 
     print('Package versions: ', file=open(exp.log_file, 'a'))
     for package in versions['dependencies']:
         print(package, file=open(exp.log_file, 'a'))
+    print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
+    
 
+    scratch_log= exp.scratch + exp.name + "-" + exp.date + '.log'
+    os.rename(exp.log_file, scratch_log)
+    copytree(exp.scratch, exp.out_dir)
+    
+    print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
+    print('Moved all files into {out}: '.format(out=exp.out_dir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
 
 ### Pipeline:
