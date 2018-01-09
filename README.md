@@ -38,5 +38,4 @@ All submission scripts, error and output files are saved.
 ## To Do:
 1. Add splicing analyses.
 2. Bam inputs.
-3. DESeq2 alone option.
 4. ICA analysis.

@@ -2,8 +2,7 @@
 # coding: utf-8
 
 '''
-
-Nimerlab-RNASeq-pipeline-v0.1
+Nimerlab RNASeq Pipeline v0.2
 
 Copyright © 2018 Daniel L. Karl
 
@@ -19,10 +18,9 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+Reads an experimetnal design yaml file (Version 0.2).
+Requires a conda environment 'RNAseq' made from environment.yml
 
-Reads an experimetnal design yaml file (Version 0.1).
-Requires a conda environment 'RNAseq' made from RNAseq.
- yml
 To do:
     - fix PCA annotations
     - rewrite enrichr to remove gseapy
@@ -129,12 +127,16 @@ def parse_yaml():
     
     #Setting Scratch folder
     exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/' + yml['Name'] + '/'
+    os.makedirs(exp.scratch, exist_ok=True)
 
     #Passing paramters to new object
     exp.date = yml['Rundate']   
     exp.name = yml['Name']
     exp.out_dir = yml['Output_directory']
     
+    #Make out directory if it doesn't exist
+    os.makedirs(exp.out_dir, exist_ok=True)
+
     #check whether experiment has been attempted
     filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
     
@@ -509,7 +511,6 @@ def stage(exp):
         print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
         
         #Stage Experiment Folder in Scratch
-        os.makedirs(exp.scratch, exist_ok=True)
         print('Staging in ' + exp.scratch+ '\n', file=open(exp.log_file, 'a'))
         
         #Copy Fastq to scratch fastq folder
@@ -1321,7 +1322,7 @@ def enrichr_de(exp):
 
     else:
         try:
-            out_dir = exp.scratch + 'Enrichr'
+            out_dir = exp.scratch + 'GO_Enrichment'
             os.makedirs(out_dir, exist_ok=True)
             
             for comparison,design in exp.designs.items():
@@ -1329,21 +1330,21 @@ def enrichr_de(exp):
                 
                 for name,sig in exp.sig_lists[comparison].items():
                     if len(sig) == 0:
-                        print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring Enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
+                        print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring GO enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
                     else:
                         enrichr(gene_list=list(sig), descirption='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
 
             exp.tasks_complete.append('Enrichr_DE')
-            print('Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
 
         except:
-            print('Error during Enrichr.', file=open(exp.log_file,'a'))
+            print('Error during GO enrichment.', file=open(exp.log_file,'a'))
             filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
             with open(filename, 'wb') as experiment:
                 pickle.dump(exp, experiment)
-            raise RaiseError('Error during Enrichr. Fix problem then resubmit with same command to continue from last completed step.')
+            raise RaiseError('Error during GO enrichment. Fix problem then resubmit with same command to continue from last completed step.')
 
 def GSEA(exp):
     
@@ -1594,6 +1595,8 @@ def final_qc(exp):
 
             print('Beginning final qc: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
+            os.chdir(exp.scratch)
+
             folder_list=glob.glob(exp.scratch + '/*')
             folders= " ".join(folder_list)
             command_list = ['module rm python',
@@ -1612,6 +1615,9 @@ def final_qc(exp):
             #Wait for jobs to finish
             job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
             
+            if os.path.isdir(exp.scratch + '/multiqc_data'):
+                rmtree(exp.scratch + '/multiqc_data')
+
             exp.tasks_complete.append('MultiQC')
             
             return exp
@@ -1625,38 +1631,49 @@ def final_qc(exp):
 
 def finish(exp):
     
-    import yaml
+    try:
+        import yaml
 
-    os.chdir(exp.scratch)
-    
-    filename= '{out}{name}_{date}.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-    with open(filename, 'wb') as experiment:
-        pickle.dump(exp, experiment) 
-    
-    for number,sample in exp.samples.items():
-        R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                  '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
-                 ]
-        for R in R_list:
-            if os.path.isfile(R):
-                os.remove(R)
-    
-    with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
-        versions = yaml.load(file)
+        os.chdir(exp.scratch)
+        
+        for number,sample in exp.samples.items():
+            R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                      '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
+                     ]
+            for R in R_list:
+                if os.path.isfile(R):
+                    os.remove(R)
+        
+        with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
+            versions = yaml.load(file)
 
-    print('Package versions: ', file=open(exp.log_file, 'a'))
-    for package in versions['dependencies']:
-        print(package, file=open(exp.log_file, 'a'))
-    print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
-    
+        print('Package versions: ', file=open(exp.log_file, 'a'))
+        for package in versions['dependencies']:
+            print(package, file=open(exp.log_file, 'a'))
+        print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
+        
+        scratch_log= exp.scratch + exp.name + "-" + exp.date + '.log'
+        copy2(exp.log_file, scratch_log)
+        rmtree(exp.out_dir)
+        copytree(exp.scratch, exp.out_dir)
+        
+        exp.tasks_complete.append('Finished')
 
-    scratch_log= exp.scratch + exp.name + "-" + exp.date + '.log'
-    os.rename(exp.log_file, scratch_log)
-    copytree(exp.scratch, exp.out_dir)
-    
-    print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
-    print('Moved all files into {out}: '.format(out=exp.out_dir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-    print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
+        filename= '{out}{name}_{date}.pkl'.format(out=exp.out_dir, name=exp.name, date=exp.date)
+        with open(filename, 'wb') as experiment:
+            pickle.dump(exp, experiment) 
+
+        print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
+        print('Moved all files into {out}: '.format(out=exp.out_dir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
+
+    except:
+        print('Error while finishing pipeline.', file=open(exp.log_file,'a'))
+        filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
+        with open(filename, 'wb') as experiment:
+            pickle.dump(exp, experiment)
+        raise RaiseError('Error finishing pipeline. Fix problem then resubmit with same command to continue from last completed step.')
+
 
 ### Pipeline:
 exp = parse_yaml()
