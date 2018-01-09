@@ -1332,7 +1332,7 @@ def enrichr_de(exp):
                     if len(sig) == 0:
                         print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring GO enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
                     else:
-                        enrichr(gene_list=list(sig), descirption='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
+                        enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
 
             exp.tasks_complete.append('Enrichr_DE')
             print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1644,10 +1644,10 @@ def finish(exp):
                 if os.path.isfile(R):
                     os.remove(R)
         
+        print('Package versions: ', file=open(exp.log_file, 'a'))
         with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
             versions = yaml.load(file)
 
-        print('Package versions: ', file=open(exp.log_file, 'a'))
         for package in versions['dependencies']:
             print(package, file=open(exp.log_file, 'a'))
         print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
