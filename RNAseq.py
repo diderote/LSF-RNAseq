@@ -23,6 +23,7 @@ Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
     - fix PCA annotations
+    - set up to use any part as needed (specify sig lists for overlap... etc.)
     - rewrite enrichr to remove gseapy
     - rename GSEA output folders and link to results index.html
     - rMATS
@@ -36,8 +37,10 @@ import subprocess as sub
 import pandas as pd
 version=0.2
 
-### Make experiment class
 class Experiment(object):
+    '''
+    Experiment object for pipeline
+    '''
      def __init__(self, scratch, date, name, out_dir, job_folder, qc_folder, 
                   log_file,start,fastq_folder,fastq_start,spike,trimmed,
                   count_matrix,spike_counts,stop,genome,sample_number, 
@@ -109,9 +112,10 @@ def new_experiment():
 class RaiseError(Exception):
     pass
 
-#### Parse Experimental File
 def parse_yaml():
-    
+    '''
+    Parse experimental info from yaml file
+    '''    
     import argparse,yaml
     
     parser = argparse.ArgumentParser()
@@ -149,9 +153,7 @@ def parse_yaml():
         print('\n#############\nRestarting pipeline on {date}, from last completed step.'.format(date=str(datetime.datetime.now())), file=open(exp.log_file,'a'))
 
         return exp 
-
     else: 
-
         #Setting Job Folder
         exp.job_folder = exp.scratch + 'logs/'
         os.makedirs(exp.job_folder, exist_ok=True)
@@ -204,11 +206,11 @@ def parse_yaml():
         #End Point
         if yml['Stop']['Alignment']:
             exp.stop = 'Alignment'
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','Heatmaps','Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after alignment.'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Stop']['Differential_Expression']:
             exp.stop = 'DE'
-            exp.tasks_complete = exp.tasks_complete + ['Enrichr_DE','GSEA_DESeq2','PCA','Overlaps']
+            exp.tasks_complete = exp.tasks_complete + ['GO_enrich','GSEA_DESeq2','PCA','Overlaps']
             print('Pipeline stopping after differential expression analysis.'+ '\n', file=open(exp.log_file, 'a'))
         else:
             exp.stop = 'END'
@@ -385,28 +387,13 @@ def parse_yaml():
         
         return exp
 
-# Sends job to LSF resource manager queues
 def send_job(command_list, job_name, job_log_folder, q, mem):
-    
+    '''
+    Sends job to LSF pegasus.ccs.miami.edu
+    '''
     import random
     
     os.makedirs(job_log_folder, exist_ok=True)
-
-    '''
-    Send job to LSF pegasus.ccs.miami.edu
-    Example:
-    print(send_job(command_list=['module rm python,
-                                  'source activate RNAseq' ,
-                                  'fastqc...  ',
-                                  'fastq_screen.... ' 
-                                 ], 
-                   job_name='fastqc',
-                   job_log_folder=exp.job_folder,
-                   q='bigmem',
-                   mem=60000
-                  )
-         )
-    '''
 
     rand_id = str(random.randint(0, 100000))
     str_comd_list =  '\n'.join(command_list)
@@ -444,9 +431,10 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
    
     return rand_id
 
-# waits for LSF jobs to finish
 def job_wait(id_list, job_log_folder):
-    
+    '''
+    Waits for jobs sent by send job to finish.
+    '''
     running = True
     while running:
         jobs_list = os.popen('sleep 60|bhist -w').read()
@@ -460,8 +448,9 @@ def job_wait(id_list, job_log_folder):
             print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
 def fastq_cat(exp):
-    
-    
+    '''
+    Illumina basespace changed format for fastq downloads.  This def needs to be updated to reflect this.
+    '''
     if 'Fastq_cat' in exp.tasks_complete:
         return exp
 
@@ -499,9 +488,10 @@ def fastq_cat(exp):
         print('Pipeline not set up to handle fastq merging yet.', file=open(exp.log_file,'a'))
         raise RaiseError('Pipeline not set up to handle fastq merging yet.  Use "cat file1 file2 > final_file" to manually merge then restart.')
 
-# Stages experiment in a scratch folder
 def stage(exp):
-    
+    '''
+    Stages files in Pegasus Scratch
+    '''
     if 'Stage' in exp.tasks_complete:
         return exp
 
@@ -531,7 +521,9 @@ def stage(exp):
         return exp
 
 def fastqc(exp):
-    
+    '''
+    Performs fastq spec analysis with FastQC
+    '''
     if 'FastQC' in exp.tasks_complete:
         return exp
 
@@ -583,7 +575,9 @@ def fastqc(exp):
             raise RaiseError('Error in FastQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def fastq_screen(exp):
-    
+    '''
+    Checks fastq files for contamination with alternative genomes using Bowtie2
+    '''
     if 'Fastq_screen' in exp.tasks_complete:
         return exp
 
@@ -639,9 +633,11 @@ def fastq_screen(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error in Fastq_screen. Fix problem then resubmit with same command to continue from last completed step.')
 
-# Trimming based on standard UM SCCC Core Nextseq 500 technical errors
-def trim(exp):
 
+def trim(exp):
+    '''
+    Trimming based on standard UM SCCC Core Nextseq 500 technical errors.  Cudadapt can hard clip both ends, but may ignore 3' in future.
+    '''
     if 'Trim' in exp.tasks_complete:
         exp.trimmed = True
         return exp
@@ -652,7 +648,6 @@ def trim(exp):
                 
             #change to experimental directory in scratch
             os.chdir(exp.fastq_folder)
-
             
             scan=0
             while scan < 2:
@@ -709,18 +704,10 @@ def trim(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during trimming. Fix problem then resubmit with same command to continue from last completed step.')
 
-def preprocess(exp):
-    
-    exp=fastq_cat(exp)
-    exp=stage(exp)
-    exp=fastq_screen(exp)
-    exp=trim(exp)
-    exp=fastqc(exp)  
-    
-    return exp
-
 def spike(exp):
-    
+    '''
+    Align sequencing files to ERCC index using STAR aligner.
+    '''
     if 'Spike' in exp.tasks_complete:
         return exp
 
@@ -801,7 +788,9 @@ def spike(exp):
     return exp 
 
 def rsem(exp):
-    
+    '''
+    Alignment to transcriptome using STAR and estimating expected counts using EM
+    '''
     if 'RSEM' in exp.tasks_complete:
         return exp
 
@@ -871,7 +860,11 @@ def rsem(exp):
             raise RaiseError('Error during STAR/RSEM alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
 def kallisto(exp):
-    
+    '''
+    Second/alternate alignment to transcriptome using kallisto
+    '''
+
+
     if 'Kallisto' in exp.tasks_complete:
         return exp
 
@@ -935,15 +928,10 @@ def kallisto(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during Kallisto alignment. Fix problem then resubmit with same command to continue from last completed step.')
 
-def align(exp):
-    
-    exp=spike(exp)
-    exp=rsem(exp)
-    exp=kallisto(exp)
-
-    return exp
-
 def count_matrix(exp):
+    '''
+    Generates Count Matrix from RSEM results.
+    '''
     
     if 'Count_Matrix' in exp.tasks_complete:
         return exp
@@ -1107,7 +1095,9 @@ def DESeq2(exp):
             raise RaiseError('Error during DESeq2. Fix problem then resubmit with same command to continue from last completed step.')
 
 def Sleuth(exp):
-
+    '''
+    Differential expression using sleuth from the Pachter lab: https://pachterlab.github.io/sleuth/
+    '''
     if 'Sleuth' in exp.tasks_complete:
         return exp
 
@@ -1201,7 +1191,9 @@ def Sleuth(exp):
             raise RaiseError('Error during Sleuth. Fix problem then resubmit with same command to continue from last completed step.')
 
 def sigs(exp):
-
+    '''
+    Identifies significantly differentially expressed genes at 2 fold and 1.5 fold cutoffs with q<0.05.
+    '''
     if 'Sigs' in exp.tasks_complete:
         return exp
 
@@ -1250,7 +1242,9 @@ def sigs(exp):
             raise RaiseError('Error during identificaiton of significantly differentially expressed genes. Fix problem then resubmit with same command to continue from last completed step.')            
 
 def clustermap(exp):
-    
+    '''
+    Generate heatmap of differentially expressed genes using variance stablized transfrmed log2counts.
+    '''
     if 'Heatmaps' in exp.tasks_complete:
         return exp
 
@@ -1297,6 +1291,10 @@ def clustermap(exp):
             raise RaiseError('Error during heatmap generation. Fix problem then resubmit with same command to continue from last completed step.')
 
 def enrichr(gene_list, description, out_dir):
+    '''
+    Perform GO enrichment and KEGG enrichment Analysis using Enrichr: http://amp.pharm.mssm.edu/Enrichr/
+    '''
+
     import gseapy
     
     gseapy.enrichr(gene_list=gene_list,
@@ -1316,9 +1314,11 @@ def enrichr(gene_list, description, out_dir):
                   )
     return
 
-def enrichr_de(exp):
-    
-    if 'Enrichr_DE' in exp.tasks_complete:
+def GO_enrich(exp):
+    '''
+    Perform GO enrichment analysis on significanttly differentially expressed genes.
+    '''
+    if 'GO_enrich' in exp.tasks_complete:
         return exp
 
     else:
@@ -1335,7 +1335,7 @@ def enrichr_de(exp):
                     else:
                         enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
 
-            exp.tasks_complete.append('Enrichr_DE')
+            exp.tasks_complete.append('GO_enrich')
             print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
@@ -1348,10 +1348,11 @@ def enrichr_de(exp):
             raise RaiseError('Error during GO enrichment. Fix problem then resubmit with same command to continue from last completed step.')
 
 def GSEA(exp):
-    
+    '''
+    Perform Gene Set Enrichment Analysis using gsea 3.0 from the Broad Institute.
+    '''
     if 'GSEA' in exp.tasks_complete:
         return exp
-
     else:
         try:
             out_dir = exp.scratch + 'DESeq2_GSEA'
@@ -1425,10 +1426,9 @@ def GSEA(exp):
             raise RaiseError('Error during GSEA. Fix problem then resubmit with same command to continue from last completed step.')
 
 def PCA(exp):
-    
+
     if 'PCA' in exp.tasks_complete:
         return exp
-
     else:
         try:
 
@@ -1479,26 +1479,7 @@ def PCA(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during PCA. Fix problem then resubmit with same command to continue from last completed step.')
 
-def diff_exp(exp):
-    
-    exp = count_matrix(exp)
-    exp = DESeq2(exp)
-    exp = Sleuth(exp)
-    exp = sigs(exp)
-    exp = clustermap(exp)
-    exp = enrichr_de(exp)
-    exp = GSEA(exp)
-    exp = PCA(exp)
-    
-    #ICA  
-
-    return exp
-
 def splicing(exp):
-
-
-    
-
     return exp
 
 def plot_venn2(Series, string_name_of_overlap, folder):
@@ -1536,10 +1517,11 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".png", dpi=200)
 
 def overlaps(exp):
-    
+    '''
+    Performs overlaps of two or more de_sig lists.
+    '''
     if 'Overlap' in exp.tasks_complete:
         return exp
-
     else:
         try:
 
@@ -1631,7 +1613,6 @@ def final_qc(exp):
             raise RaiseError('Error during MultiQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def finish(exp):
-    
     try:
         import yaml
 
@@ -1658,7 +1639,6 @@ def finish(exp):
         copy2(exp.log_file, scratch_log)
         rmtree(exp.out_dir)
         copytree(exp.scratch, exp.out_dir)
-        
 
         exp.tasks_complete.append('Finished')
 
@@ -1676,13 +1656,42 @@ def finish(exp):
             pickle.dump(exp, experiment)
         raise RaiseError('Error finishing pipeline. Fix problem then resubmit with same command to continue from last completed step.')
 
+def preprocess(exp):
+    exp=fastq_cat(exp)
+    exp=stage(exp)
+    exp=fastq_screen(exp)
+    exp=trim(exp)
+    exp=fastqc(exp)  
+    return exp
 
-### Pipeline:
-exp = parse_yaml()
-exp = preprocess(exp)
-exp = align(exp)
-exp = diff_exp(exp)
-exp = overlaps(exp)
-exp = splicing(exp)
-exp = final_qc(exp)
-finish(exp)
+def diff_exp(exp):
+    exp = count_matrix(exp)
+    exp = DESeq2(exp)
+    exp = Sleuth(exp)
+    exp = sigs(exp)
+    exp = clustermap(exp)
+    exp = GO_enrich(exp)
+    exp = GSEA(exp)
+    exp = PCA(exp)
+    #exp = ICA(exp)  
+    return exp
+
+def align(exp):
+    exp=spike(exp)
+    exp=rsem(exp)
+    exp=kallisto(exp)
+    return exp
+
+def pipeline():
+    exp = parse_yaml()
+    exp = preprocess(exp)
+    exp = align(exp)
+    exp = diff_exp(exp)
+    exp = overlaps(exp)
+    exp = splicing(exp)
+    exp = final_qc(exp)
+    finish(exp)
+
+if __name__ = "__main__":
+    pipeline()
+
