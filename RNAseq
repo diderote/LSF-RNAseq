@@ -1645,12 +1645,13 @@ def finish(exp):
                 if os.path.isfile(R):
                     os.remove(R)
         
-        print('Package versions: ', file=open(exp.log_file, 'a'))
+        print('\nPackage versions: ', file=open(exp.log_file, 'a'))
         with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:
             versions = yaml.load(file)
-
         for package in versions['dependencies']:
             print(package, file=open(exp.log_file, 'a'))
+
+        print('\n{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
         print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
         
         scratch_log= exp.scratch + exp.name + "-" + exp.date + '.log'
@@ -1658,13 +1659,13 @@ def finish(exp):
         rmtree(exp.out_dir)
         copytree(exp.scratch, exp.out_dir)
         
+
         exp.tasks_complete.append('Finished')
 
         filename= '{out}{name}_{date}.pkl'.format(out=exp.out_dir, name=exp.name, date=exp.date)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment) 
 
-        print('{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
         print('Moved all files into {out}: '.format(out=exp.out_dir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
         print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
 
