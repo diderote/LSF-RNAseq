@@ -1692,6 +1692,6 @@ def pipeline():
     exp = final_qc(exp)
     finish(exp)
 
-if __name__ = "__main__":
+if __name__ == "__main__":
     pipeline()
 
