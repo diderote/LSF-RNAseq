@@ -41,7 +41,7 @@ class Experiment(object):
     '''
     Experiment object for pipeline
     '''
-     def __init__(self, scratch, date, name, out_dir, job_folder, qc_folder, 
+    def __init__(self, scratch, date, name, out_dir, job_folder, qc_folder, 
                   log_file,start,fastq_folder,fastq_start,spike,trimmed,
                   count_matrix,spike_counts,stop,genome,sample_number, 
                   samples, job_id,de_groups,norm,designs, overlaps,
@@ -1461,8 +1461,8 @@ def PCA(exp):
                 red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
                 blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
-                #for i,sample in enumerate(bpca_df['name'].tolist()):
-                #    ax.annotate(sample, (bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points')             
+                for i,sample in enumerate(bpca_df['name'].tolist()):
+                    ax.annotate(sample, (bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points')             
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
                 ax.figure.savefig(out_dir + '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir + '{comparison}_PCA.svg'.format(comparison=comparison))
