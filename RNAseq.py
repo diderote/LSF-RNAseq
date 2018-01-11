@@ -22,11 +22,10 @@ Reads an experimetnal design yaml file (Version 0.2).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
-    - fix PCA annotations
     - set up to use any part as needed (specify sig lists for overlap... etc.)
-    - rewrite enrichr to remove gseapy
     - rename GSEA output folders and link to results index.html
     - rMATS
+    - scale big wigs by scale factors
     - ICA with chi-square with de groups
 
 '''
@@ -353,7 +352,12 @@ def parse_yaml():
                                                                        "main_comparison": exp.designs[key]['main_comparison'],
                                                                        "compensation": exp.designs[key]['compensation']})
                         print('DE design: '+ '\n', file=open(exp.log_file, 'a'))
-                        print(str(exp.designs)+ '\n', file=open(exp.log_file, 'a')) 
+                        
+                        for name,items in exp.designs.items():
+                            print('{}:'.format(name), file=open(exp.log_file,'a'))
+                            print(str(items['colData']), file=open(exp.log_file,'a'))
+                            print('{} design:'.format(name), file=open(exp.log_file, 'a')) 
+                            print(str(items['design']), file=open(exp.log_file,'a'))
                     else:
                         raise ValueError(error)
 
@@ -377,8 +381,9 @@ def parse_yaml():
                     pass    
                 else:
                     exp.overlaps[key] = item.split('v')
-            print('Overlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).'+ '\n', file=open(exp.log_file, 'a'))
-            print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
+            print('Overlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
+            if str(len(list(exp.overlaps.keys()))) != 0:
+                print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
             
         #Initialized Process Complete List
         exp.tasks_complete.append('Parsed')
@@ -425,7 +430,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
     write_job.write(cmd)
     write_job.close()
     os.system('bsub < {}'.format(job_path_name))
-    print('sending job ID_' + str(rand_id) + '...'+ '\n', file=open(log_file, 'a'))
+    print('sending job ID_{rand_id}...'.format(rand_id=str(rand_id)), file=open(log_file, 'a'))
     time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
    
     return rand_id
@@ -850,6 +855,13 @@ def rsem(exp):
             
                 scan += 1
 
+            remove_files = ['genome.bam','transcript.bam','transcript.sorted.bam','transcrpt.sorted.bam.bai','wig']
+            for number,sample in exp.samples.items():
+                for file in reomve_files:
+                    del_file='{RSEM_out}{sample}.{file}'.format(RSEM_out=RSEM_out, sample=sample,file=file)
+                    if os.path.isfile(del_file):
+                        os.remove(del_file)
+
             os.chdir(exp.scratch)
             exp.tasks_complete.append('RSEM')
             print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1033,7 +1045,6 @@ def DESeq2(exp):
                                                                design=design
                                                               )
                 
-                print('Performing differential expression with DESeq2: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 dds[comparison] = deseq.DESeq(dds[comparison])
                 
                 if exp.norm == 'ERCC':
@@ -1467,7 +1478,8 @@ def PCA(exp):
                 blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
                 for i,sample in enumerate(bpca_df['name'].tolist()):
-                    ax.annotate(sample, xytext=(bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points', arrowprops=dict(arrowstyle="-"))             
+                    xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
+                    ax.annotate(sample, xy= xy, xytext=xy, textcoords='offset points', arrowprops=dict(arrowstyle="-"))             
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
                 ax.figure.savefig(out_dir + '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir + '{comparison}_PCA.svg'.format(comparison=comparison))
