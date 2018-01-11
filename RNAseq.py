@@ -431,7 +431,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
    
     return rand_id
 
-def job_wait(id_list, job_log_folder):
+def job_wait(id_list, job_log_folder, log_file):
     '''
     Waits for jobs sent by send job to finish.
     '''
@@ -445,7 +445,7 @@ def job_wait(id_list, job_log_folder):
         if len(current) == 0:
             running = False
         else:
-            print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+            print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(log_file, 'a'))
     
 def fastq_cat(exp):
     '''
@@ -553,7 +553,7 @@ def fastqc(exp):
                                  )
 
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
             
             #move to qc folder
             fastqc_files = glob.glob(exp.fastq_folder + '*.zip')
@@ -613,7 +613,7 @@ def fastq_screen(exp):
                 time.sleep(1)
             
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
             
             #move to qc folder        
             fastqs_files = glob.glob(exp.fastq_folder + '*screen*')
@@ -680,7 +680,7 @@ def trim(exp):
                                          )
                     
                 #Wait for jobs to finish
-                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
                 scan += 1
             
@@ -750,7 +750,7 @@ def spike(exp):
                                          )
 
                 #Wait for jobs to finish
-                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
                 scan += 1
 
@@ -847,7 +847,7 @@ def rsem(exp):
                         time.sleep(5)
 
                 #Wait for jobs to finish
-                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
             
                 scan += 1
 
@@ -919,7 +919,7 @@ def kallisto(exp):
                                          )
 
                 #Wait for jobs to finish
-                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+                job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
                     
                 scan += 1
 
@@ -971,7 +971,7 @@ def count_matrix(exp):
                              )
             
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
             
             counts = pd.read_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
             counts.columns = columns
@@ -1413,7 +1413,7 @@ def GSEA(exp):
                     time.sleep(1)
 
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
             for comparison,design in exp.designs.items():
                 if 'index.html' != glob.glob('{loc}/{comparison}/h.all/*/index.html'.format(loc=out_dir, comparison=comparison))[0].split('/')[-1]:
@@ -1605,7 +1605,7 @@ def final_qc(exp):
                              )
             
             #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder)
+            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
             
             if os.path.isdir(exp.scratch + '/multiqc_data'):
                 rmtree(exp.scratch + '/multiqc_data')
