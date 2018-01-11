@@ -1,5 +1,4 @@
 Name: 'Experiment_Name' #Experiment name
-Rundate: 'YYYY-MM-DD' #Run Date
 Genome: hg38 #or mm10
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Output directory here.
 ERCC_spike: yes # yes if ERCC spike-ins used.

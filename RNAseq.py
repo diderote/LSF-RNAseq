@@ -135,7 +135,7 @@ def parse_yaml():
     os.makedirs(exp.scratch, exist_ok=True)
 
     #Passing paramters to new object
-    exp.date = yml['Rundate']   
+    exp.date = datetime.datetime.today().strftime('%Y-%m-%d')   
     exp.name = yml['Name']
     exp.out_dir = yml['Output_directory']
     
@@ -161,7 +161,7 @@ def parse_yaml():
         #Log file
         exp.log_file = exp.out_dir + exp.name + "-" + exp.date + '.log'
         
-        print('Pipeline version ' + str(version) + ' run on ' + datetime.datetime.today().strftime('%Y-%m-%d') + '\n', file=open(exp.log_file, 'w'))
+        print('Pipeline version ' + str(version) + ' run on ' + exp.date + '\n', file=open(exp.log_file, 'w'))
         print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
         print('Reading experimental file...' + '\n', file=open(exp.log_file, 'a'))
 
@@ -424,7 +424,6 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
     write_job = open(job_path_name, 'w')
     write_job.write(cmd)
     write_job.close()
-    print(cmd+ '\n', file=open(log_file, 'a'))
     os.system('bsub < {}'.format(job_path_name))
     print('sending job ID_' + str(rand_id) + '...'+ '\n', file=open(log_file, 'a'))
     time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
@@ -1371,11 +1370,10 @@ def GSEA(exp):
 
             for comparison,design in exp.designs.items():
                 
-                print('Beginning GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
+                print('GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
                 os.makedirs(out_compare, exist_ok=True)
 
-                print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 results=exp.de_results['DE2_' + comparison]
 
                 #convert to human homolog if mouse
@@ -1390,7 +1388,6 @@ def GSEA(exp):
                 os.chdir(out_compare)
 
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                
  
                 gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
                 for gset in gmts:
@@ -1470,7 +1467,7 @@ def PCA(exp):
                 blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
                 for i,sample in enumerate(bpca_df['name'].tolist()):
-                    ax.annotate(sample, (bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points')             
+                    ax.annotate(sample, xytext=(bpca_df.iloc[i,0], bpca_df.iloc[i,1]), textcoords='offset points', arrowprops=dict(arrowstyle="-"))             
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
                 ax.figure.savefig(out_dir + '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir + '{comparison}_PCA.svg'.format(comparison=comparison))
@@ -1697,7 +1694,7 @@ def pipeline():
     exp = align(exp)
     exp = diff_exp(exp)
     exp = overlaps(exp)
-    exp = splicing(exp)
+    #exp = splicing(exp)
     exp = final_qc(exp)
     finish(exp)
 
