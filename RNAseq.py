@@ -387,7 +387,7 @@ def parse_yaml():
         
         return exp
 
-def send_job(command_list, job_name, job_log_folder, q, mem):
+def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
     '''
     Sends job to LSF pegasus.ccs.miami.edu
     '''
@@ -424,9 +424,9 @@ def send_job(command_list, job_name, job_log_folder, q, mem):
     write_job = open(job_path_name, 'w')
     write_job.write(cmd)
     write_job.close()
-    print(cmd+ '\n', file=open(exp.log_file, 'a'))
+    print(cmd+ '\n', file=open(log_file, 'a'))
     os.system('bsub < {}'.format(job_path_name))
-    print('sending job ID_' + str(rand_id) + '...'+ '\n', file=open(exp.log_file, 'a'))
+    print('sending job ID_' + str(rand_id) + '...'+ '\n', file=open(log_file, 'a'))
     time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
    
     return rand_id
@@ -547,7 +547,8 @@ def fastqc(exp):
                                            job_name= sample + '_fastqc',
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
-                                           mem=1000
+                                           mem=1000,
+                                           log_file=exp.log_file
                                           )
                                  )
 
@@ -605,7 +606,8 @@ def fastq_screen(exp):
                                            job_name= sample + '_fastq_screen',
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
-                                           mem=3000
+                                           mem=3000,
+                                           log_file=exp.log_file
                                           )
                                  )
                 time.sleep(1)
@@ -672,7 +674,8 @@ def trim(exp):
                                                    job_name= sample + "_trim",
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
-                                                   mem=1000
+                                                   mem=1000,
+                                                   log_file=exp.log_file
                                                   )
                                          )
                     
@@ -741,7 +744,8 @@ def spike(exp):
                                                    job_name= sample + '_ERCC',
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
-                                                   mem=5000
+                                                   mem=5000,
+                                                   log_file=exp.log_file
                                                   )
                                          )
 
@@ -836,7 +840,8 @@ def rsem(exp):
                                                     job_name= sample + '_RSEM',
                                                     job_log_folder=exp.job_folder,
                                                     q= 'bigmem',
-                                                    mem=60000
+                                                    mem=60000,
+                                                    log_file=exp.log_file
                                                     )
                                           )
                         time.sleep(5)
@@ -908,7 +913,8 @@ def kallisto(exp):
                                                    job_name= sample + '_Kallisto',
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
-                                                   mem=10000
+                                                   mem=10000,
+                                                   log_file=exp.log_file
                                                   )
                                          )
 
@@ -959,7 +965,8 @@ def count_matrix(exp):
                                        job_name= 'Generate_Count_Matrix',
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
-                                       mem=1000
+                                       mem=1000,
+                                       log_file=exp.log_file
                                       )
                              )
             
@@ -1399,7 +1406,8 @@ def GSEA(exp):
                                                job_name='{comparison}_{gset}_GSEA'.format(comparison=comparison,gset=gset),
                                                job_log_folder=exp.job_folder,
                                                q= 'general',
-                                               mem=3000
+                                               mem=3000,
+                                               log_file=exp.log_file
                                               )
                                      )
                     time.sleep(1)
@@ -1591,7 +1599,8 @@ def final_qc(exp):
                                        job_name= 'MultiQC',
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
-                                       mem=1000
+                                       mem=1000,
+                                       log_file=exp.log_file
                                       )
                              )
             
