@@ -5,16 +5,18 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 2. Screening for contamination of other genomes
 3. Fastq quality measurements
 4. Adapter and quality fastq trimming
-5. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
-6. Spike-in quantificaiton (if applicable)
-6. Differential expression using DESeq2 (from RSEM and spike-in), and overlap with Sleuth (Kallisto) under most conditions
-7. Heatmap of significantly differentially expressed genes
-8. GO enrichment of DE genes
-9. GSEA from test statistic ranked gene lists from DESeq2
-10. PCA analysis
-11. Overlap of multiple DE significant gene lists.
+5. Spike-in quantificaiton (if applicable)
+6. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
+7. Generation of scaled (reads per million) bigwig files from transcriptome alignment
+7. Differential expression using DESeq2 (from scaled or spike-in sample normlalization)
+8. Overlap with signifiantly differentially expressed genes (q<0.05, 2 & 1.5 FC) with Sleuth (Kallisto) q<0.05 DE genes 
+9. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
+10. GO and KEGG enrichment of DE genes
+11. GSEA from test statistic ranked gene lists from DESeq2
+12. PCA analysis
+13. Overlap of multiple DE significant gene lists and scaled venn output.
 
-The pipeline handles multiple entry/exit points and parse complex experimental designs and compensation types for DE.
+The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.
 In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
 All submission scripts, error and output files are saved.
 
@@ -35,7 +37,43 @@ All submission scripts, error and output files are saved.
 	- bsub -q general -n 1 -R 'rusage[mem=1000]' -W 120:00 -o RNAseq.out -e RNAseq.err <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
 8. In case of error, use the above command to pick up from last completed step.
 
+### RNAseq.py can be imported to python as a module with the following attributes:
+	New Class:
+		- exp = Experiment(scratch='/path/to/scratch/folder/', date='', name='experiment_name', out_dir='/path/to/results/folder', job_folder='/path/to/job/folder',count_matrix=pd.DataFrame(index=genes,columns=samplenames),spike_counts=pd.DataFrame(),stop='',genome='hg38 or mm10',sample_number=int(), samples={1:'sample_name'}, job_id=[],de_groups={},norm='bioinformatic',designs={},overlaps={},tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={})
+	
+	Experiment object can be passed to the following functions and returned: exp = function(exp):
+	- RNAseq.DESeq2()
+	- RNAseq.fastq_cat()       
+    - RNAseq.fastq_screen()
+    - RNAseq.GO_enrich()
+    - RNAseq.fastqc()
+    - RNAseq.GSEA()
+    - RNAseq.final_qc()
+	- RNAseq.PCA()
+	- RNAseq.rsem()
+	- RNAseq.Sleuth()
+	- RNAseq.kallisto()
+	- RNAseq.sigs()
+	- RNAseq.clustermap()
+	- RNAseq.spike()
+	- RNAseq.splicing()
+	- RNAseq.overlaps()
+	- RNAseq.stage()
+	- RNAseq.count_matrix()      
+	- RNAseq.trim()
+
+	helper functions:
+	- RNAseq.parse_yaml() takes required -f yaml file and parses an new experimental object or loads an incomplete one     
+	- RNAseq.plot_venn2(Series=pd.Series(), string_name_of_overlap='', folder='') scaled venn of an overlap
+	- RNAseq.scaled_bigwig(in_bam='/path/to/bam',out_bw='/path/to/bw',job_log_folder=exp.job_folder,name='',genome=exp.genome) scales bam to bigwig rpm
+	- RNAseq.job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file) waits for submitted job to finish
+	- RNAseq.send_job(command_list=[], job_name='', job_log_folder=exp.job_folder, q='', mem='', log_file=exp.log_file) sends job to LSF resource manager
+	- RNAseq.enrichr(gene_list=[], description='', out_dir='')
+
 ## To Do:
 1. Add splicing analyses.
 2. Fine tune stop and start points.
-4. ICA analysis.
+3. ICA analysis.
+4. rename GSEA output folders and link to results index.html
+5. scale bw by scale factors (save scale factors as exp.scale)
+

@@ -40,12 +40,11 @@ class Experiment(object):
     '''
     Experiment object for pipeline
     '''
-    def __init__(self, scratch, date, name, out_dir, job_folder, qc_folder, 
-                  log_file,start,fastq_folder,fastq_start,spike,trimmed,
-                  count_matrix,spike_counts,stop,genome,sample_number, 
-                  samples, job_id,de_groups,norm,designs, overlaps,
-                  tasks_complete,de_results,sig_lists,overlap_results,
-                  de_sig_overlap
+    def __init__(self, scratch='', date='', name='', out_dir='', job_folder='', qc_folder='', 
+                  log_file='',start='',fastq_folder='',fastq_start=False,spike=False,trimmed=False,
+                  count_matrix=pd.DataFrame(),spike_counts=pd.DataFrame(),stop='',genome='',sample_number=int(), 
+                  samples={}, job_id=[],de_groups={},norm='bioinformatic',designs={}, overlaps={},
+                  tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={}
                  ):
         self.scratch = scratch
         self.date = date
@@ -76,38 +75,6 @@ class Experiment(object):
         self.overlap_results=overlap_results
         self.de_sig_overlap = de_sig_overlap
 
-def new_experiment():
-    experiment = Experiment(scratch = '',
-                            date = '',
-                            name = '',
-                            out_dir ='',
-                            job_folder='',
-                            qc_folder='',
-                            log_file='',
-                            start='',
-                            fastq_folder='',
-                            fastq_start = False,
-                            spike = False,
-                            trimmed = False,
-                            count_matrix = pd.DataFrame(),
-                            spike_counts = pd.DataFrame(),
-                            stop = '',
-                            genome = '',
-                            sample_number = {},
-                            samples={},
-                            job_id=[],
-                            de_groups = {},
-                            norm = 'bioinformatic',
-                            designs={},
-                            overlaps = {},
-                            tasks_complete=[],
-                            de_results = {},
-                            sig_lists={},
-                            overlap_results={},
-                            de_sig_overlap = {}
-                           )
-    return experiment
-
 class RaiseError(Exception):
     pass
 
@@ -127,7 +94,7 @@ def parse_yaml():
     exp_input.close()
 
     #Make a new experimental object
-    exp = new_experiment()
+    exp = Experiment()
     
     #Setting Scratch folder
     exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/' + yml['Name'] + '/'
@@ -795,6 +762,20 @@ def spike(exp):
     exp.tasks_complete.append('Spike')
     return exp 
 
+def bam2bw(in_bam,out_bw,job_log_folder,name,genome):
+
+    script='{job_log_folder}{name}.py'.format(job_log_folder=job_log_folder,name=name)
+    print('#!/usr/bin/env python\nimport pybedtools\nimport subprocess', file=open(script,'w'))
+    print('kwargs=dict(bg=True,split=True,g="{genome}")'.format(genome=genome), file=open(script,'a'))
+    print('readcount=pybedtools.contrib.bigwig.mapped_read_count("{in_bam}")'.format(in_bam=in_bam), file=open(script,'a'))
+    print('_scale = 1 / (readcount / 1e6)\nkwargs["scale"] = _scale', file=open(script,'a'))
+    print('x = pybedtools.BedTool("{in_bam}").genome_coverage(**kwargs)'.format(in_bam=in_bam), file=open(script,'a'))
+    print('cmds = ["bedGraphToBigWig", x.fn, "{genome}", "{out_bw}"]'.format(genome=genome,out_bw=out_bw), file=open(script,'a'))
+    print('p = subprocess.Popen(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)', file=open(script,'a'))
+    print('stdout, stderr = p.communicate()', file=open(script,'a'))
+
+    return script
+
 def rsem(exp):
     '''
     Alignment to transcriptome using STAR and estimating expected counts using EM
@@ -813,30 +794,34 @@ def rsem(exp):
             scan=0
             while scan < 2: #Loop twice to make sure source activate didn't fail the first time
                 for number,sample in exp.samples.items():      
-                    if '{loc}{sample}.rsem.bw'.format(loc=RSEM_out,sample=sample) in glob.glob(RSEM_out + '*.bw'):
+                    if '{loc}{sample}.genome.sorted.bam'.format(loc=RSEM_out,sample=sample) in glob.glob(RSEM_out + '*.bam'):
                         pass
                     else:
                         print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
                         if exp.genome == 'hg38':
                             align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                            wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                            genome='/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt'
                         elif exp.genome == 'mm10':
                             align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                            wig2bw='wigToBigWig {sample}.wig /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt {sample}.rsem.bw'.format(sample=sample)
+                            genome='/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt'
                         else:
                             print('Error in star/rsem alignment, cannot align to genome other than mm10 or hg38.', file=open(exp.log_file,'a'))
                             raise IOError('This pipeline only handles mm10 or hg38 genomes.  Please fix and resubmit.')
-                         
-                        bam2wig='rsem-bam2wig {sample}.genome.sorted.bam {sample}.wig {sample}'.format(sample=sample)
+
                         plot_model='rsem-plot-model {sample} {sample}.models.pdf' .format(sample=sample)  
 
-                        command_list = ['module rm python',
-                                        'module rm perl',
+                        scaled=bam2bw(in_bam='{loc}{sample}.genome.sorted.bam'.format(loc=RSEM_out,sample=sample),
+                                      out_bam='{loc}{sample}.rsem.rpm.bw'.format(loc=RSEM_out, sample=sample),
+                                      job_log_folder=exp.job_folder,
+                                      name='{}_to_bigwig'.format(sample),
+                                      genome=genome
+                                     )
+
+                        command_list = ['module rm python share-rpms65',
                                         'source activate RNAseq',
                                         align,
-                                        bam2wig,
-                                        wig2bw,
+                                        'python {}'.format(scaled),
                                         plot_model
                                         ]
 
@@ -879,8 +864,6 @@ def kallisto(exp):
     '''
     Second/alternate alignment to transcriptome using kallisto
     '''
-
-
     if 'Kallisto' in exp.tasks_complete:
         return exp
 
