@@ -24,9 +24,10 @@ Requires a conda environment 'RNAseq' made from environment.yml
 To do:
     - set up to use any part as needed (specify sig lists for overlap... etc.)
     - rename GSEA output folders and link to results index.html
-    - rMATS
+    - rMATS or DEXseq
     - scale big wigs by scale factors
     - ICA with chi-square with de groups
+    - replace header in bam files to change chr name from 1 to chr1
 
 '''
 
@@ -725,6 +726,11 @@ def spike(exp):
 
                 scan += 1
 
+            for number,sample in exp.samples.items():
+                sam_file='{ERCC_folder}{sample}_ERCCAligned.out.sam'.format(ERCC_folder=ERCC_folder,sample=sample)
+                if os.path.isfile(sam_file):
+                    os.remove(sam_file)
+
             print('Spike-in alignment jobs finished.', file=open(exp.log_file, 'a'))
             
             ### Generate one matrix for all spike_counts
@@ -732,9 +738,6 @@ def spike(exp):
                 ERCC_counts = glob.glob(ERCC_folder + '*_ERCCReadsPerGene.out.tab')
                 if len(ERCC_counts) != exp.sample_number:
                     print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
-                    filename= '{out}{name}_{date}_incomplete.pkl'.format(out=exp.scratch, name=exp.name, date=exp.date)
-                    with open(filename, 'wb') as experiment:
-                        pickle.dump(exp, experiment)
                     raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
                 else:
                     exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
@@ -800,8 +803,8 @@ def rsem(exp):
                         print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
                         if exp.genome == 'hg38':
-                            align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
-                            genome='/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Ensembl/GRCh38/Sequence/RSEM_STARIndex/chrNameLength.txt'
+                            align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human {sample}'.format(loc=exp.fastq_folder,sample=sample)
+                            genome='/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
                         elif exp.genome == 'mm10':
                             align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz /projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/mouse {sample}'.format(loc=exp.fastq_folder,sample=sample)
                             genome='/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/Ensembl/GRCm38/Sequence/RSEM_STARIndex/chrNameLength.txt'
@@ -1390,7 +1393,7 @@ def GSEA(exp):
 
                     command_list = ['module rm python java perl',
                                     'source activate RNAseq',
-                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs true -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {gset} -gui false'.format(gset=gset,comparison=comparison)
+                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {gset} -gui false'.format(gset=gset,comparison=comparison)
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
