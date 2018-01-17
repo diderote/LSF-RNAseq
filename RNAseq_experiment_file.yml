@@ -43,11 +43,12 @@ Overlaps:
 #### Task Options ####
 Tasks: #Default is 'All'
   Align: yes #if no, include path to count matrix below
-    Count_matrix: /path/to/count/matrix.txt #or xls
   Differential_Expression: yes 
   Splicing: yes
   Overlap_of_genes: yes #if starting at overlap, include path to gene lists below
-    Sig_matrix: /path/to/sig/matrix.xls #xls file with name in row 1. Will overlap every two columns (ie.1v2,3v4..etc)
+#### Optional ####
+Count_matrix: /path/to/count/matrix.txt #or xls.
+Sig_matrix: /path/to/sig/matrix.xls #xls file with name in row 1. Will overlap every two columns (ie.1v2,3v4..etc)
 #### Lab Options ####
 Lab: Nimer #default 'Nimer'. If 'other', fill in extra details below
 Scratch_folder: /path/to/scratch/  #staging directory

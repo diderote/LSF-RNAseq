@@ -155,7 +155,7 @@ def parse_yaml():
         if yml['Tasks']['Align'] == False:
             exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
             print('Not performing alignment.', file=open(exp.log_file,'a'))
-            count_matrix_loc=yml['Tasks']['Align']['Count_matrix']
+            count_matrix_loc=yml['Count_matrix']
             if os.path.exists(count_matrix_loc):
                 print("Count matrix found at {}".format(count_matrix_loc), file=open(exp.log_file, 'a'))
                 print("Performing only DESeq2 on for DE", file=open(exp.log_file, 'a'))
@@ -354,7 +354,7 @@ def parse_yaml():
             print('Not performing signature overlaps', file=open(exp.log_file,'a'))
 
         elif (yml['Tasks']['Differential'] == False) and yml['Tasks']['Overlap_of_genes']:
-            gene_file=yml['Tasks']['Overlap_of_genes']['Sig_matrix']
+            gene_file=yml['Sig_matrix']
             if os.path.exists(gene_file):
                 print("Gene lists found at {}".format(gene_file), file=open(exp.log_file,'a'))
                 if gene_file.split('.')[-1] == 'txt':
@@ -679,8 +679,10 @@ def trim(exp):
 
                     else:
                         print('\nTrimming {sample}: '.format(sample=sample), file=open(exp.log_file, 'a'))
-                        
-                        cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u 2 -u -2 -U 2 -U -2 -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample)
+                        trim_u=str(exp.trim[0])
+                        trim_U=str(exp.trim[1])
+
+                        cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u {trim_u} -u -{trim_u} -U {trim_U} -U -{trim_U} -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample,trim_u=trim_u,trim_U=trim_U)
                         command_list = ['module rm python',
                                         'module rm perl',
                                         'source activate RNAseq',
@@ -1568,20 +1570,21 @@ def overlaps(exp):
                 print('Beginning overlap of significant genes: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
                 for overlap,comparison_list in exp.overlaps.items():
-                    for name in names:
-                        key= '{overlap}_{name}'.format(overlap=overlap,name=name)
-                        exp.overlap_results[key] = exp.sig_lists[comparison_list[0]][name] & exp.sig_lists[comparison_list[1]][name] 
-                        
-                        if len(exp.overlap_results[key]) == 0:
-                            print('{overlap}_{name} have no overlapping genes'.format(overlap=overlap,name=name), file=open(exp.log_file,'a'))
-                        else:
-                            venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results[key]),
-                                              len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results[key]),
-                                              len(exp.overlap_results[key])
-                                             ],
-                                             index= comparison_list + ['Overlap']
-                                            )
-                            plot_venn2(venn, key, out_dir)
+                    if len(comparison_list) != 0:
+                        for name in names:
+                            key= '{overlap}_{name}'.format(overlap=overlap,name=name)
+                            exp.overlap_results[key] = exp.sig_lists[comparison_list[0]][name] & exp.sig_lists[comparison_list[1]][name] 
+                            
+                            if len(exp.overlap_results[key]) == 0:
+                                print('{overlap}_{name} have no overlapping genes'.format(overlap=overlap,name=name), file=open(exp.log_file,'a'))
+                            else:
+                                venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results[key]),
+                                                  len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results[key]),
+                                                  len(exp.overlap_results[key])
+                                                 ],
+                                                 index= comparison_list + ['Overlap']
+                                                )
+                                plot_venn2(venn, key, out_dir)
                     
             elif len(exp.gene_lists) != 0:
                 for name, gene_list in exp.gene_lists.items():
