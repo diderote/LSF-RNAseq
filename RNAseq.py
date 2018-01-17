@@ -39,7 +39,7 @@ class Experiment(object):
     Experiment object for pipeline
     '''
     def __init__(self, scratch='', date='', name='', out_dir='', job_folder='', qc_folder='', 
-                  log_file='',fastq_folder='',spike=False,count_matrix=pd.DataFrame(), trim=[0,0]
+                  log_file='',fastq_folder='',spike=False,count_matrix=pd.DataFrame(), trim=[0,0],
                   spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
                   job_id=[],de_groups={},norm='bioinformatic',designs={}, overlaps={}, gene_lists={},
                   tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
@@ -172,10 +172,17 @@ def parse_yaml():
                 exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
                 exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
                 exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
-            elif yml['Lab'].lower() == 'nimer'
+                exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
+            elif yml['Lab'].lower() == 'nimer':
+                exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
                 if exp.genome == 'mm10':
-                    exp.genome_indicies['RSEM_STAR'] = 
-
+                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
+                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
+                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
+                elif exp.genome == 'hg38':
+                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
+                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
+                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
         else:
             raise IOError('Please specify whether or not to perform alignment.', file=open(exp.file_log, 'a'))   
         
@@ -419,7 +426,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
     #!/bin/bash
 
     #BSUB -J JOB_{job_name}_ID_{random_number}
-    #BSUB -P nimerlab
+    #BSUB {project}
     #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
     #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
     #BSUB -W 120:00
@@ -435,7 +442,8 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
                                      random_number=rand_id,
                                      rand_id=rand_id,
                                      q=q,
-                                     mem=mem
+                                     mem=mem,
+                                     project=exp.project
                                     )
     
     job_path_name = job_log_folder + job_name+'.sh'
