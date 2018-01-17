@@ -1,7 +1,7 @@
+#### Vestion0.3 #####
 Name: 'Experiment_Name' #Experiment name
-Genome: hg38 #or mm10
-Output_directory: /projects/ctsi/nimerlab/to/directory/ #Output directory here.
-ERCC_spike: yes # yes if ERCC spike-ins used.
+Output_directory: /projects/ctsi/nimerlab/to/directory/ #Output directory.
+#### Experimental Setup ####
 Total_sample_number: 12 #Total number
 Samples:   
   1: 'Name' #Sample1
@@ -22,26 +22,37 @@ Samples:
   16: 'Name' #Sample16
   17: 'Name' #Sample17
   18: 'Name' #Sample18
-Differential_Expression_Groups:
-  Cont_1: 1,2,3 #Sample numbers in Control Group 1
-  Cont_2: 4,5,6 #Sample numbers in Control Group 2 (leave empty if none)
-  Exp_1: 7,8,9 #Sample numbers in Experimental Group 1
-  Exp_2: 10,11,12 #Sample numbers in Experimental Group 2 (leave empty if none)
-Differential_Expression_Normalizaiton: bioinformatic #default 'bioinformatic', second option is 'ERCC'
-Differential_Expression_Mode: Combined # 'Combined' performs DE analysis with DESeq2 and Sleuth, second option is 'DESeq2'
-Differential_Expression_Comparisons: #Groups to compare for differential expression.  Add or remove comparison lines
+#### Alignment Options ####
+ERCC_spike: # yes if ERCC spike-ins used.
+Genome: #hg38 or mm10
+Fastq_directory: /path/to/fastq/
+Hard_trim:2,4 #Hard clips 2 bp of the front of each R1 and R2 and 4 bp off the end.
+#### Differential Expression Options ####
+Groups:
+  Exp_1: 1,2,3,4 #Sample numbers in Exp Group 1
+  Exp_2: 5,6,7,8,9 #Sample numbers in Exp Group 2 (leave empty if none)
+  Cont_1: 10,11,12,13 #Sample numbers in Control Group 1
+  Cont_2: 14,15,16,17,18 #Sample numbers in Control Group 2 (leave empty if none)
+Normalization:  #default 'bioinformatic', second option is 'ERCC'
+Mode:  # 'Combined' performs DE analysis with DESeq2 and Sleuth, second option is 'DESeq2'
+Comparisons: #Groups to compare for differential expression.  Add or remove comparison lines
   Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1
-  Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Compare Experimetnal groups 1 and 2 to Controls (will control for E1-E2 and C1-C2)
+  Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Ex. Compare Exp groups 1 and 2 to Controls (accounts for E1-E2 and C1-C2 differences)
 Overlaps:
   Overlap_1: Comparison_1vComparison_2 #Overlap of Differential Genes.  Leave Blank if none needed.
-Startpoint:
-  Fastq:
-    Start: yes 
-    Pre-combined: yes #Current pipeline only handles pre-catenated files
-    Fastq_directory: /projects/ctsi/nimerlab/to/directory/ #ignored if not starting at fastq
-  Gene_Counts:
-    Start: no #start from count matrix (genes in column one, sample names as header and counts in matrix.)
-    Count_matrix_location: /path/to/count/matrix.txt #Ignore if not starting at counts
-Stop:
-  Alignment: no #Stop after alignment
-  Differential_Expression: no #Stop after DE
+#### Task Options ####
+Tasks: #Default is 'All'
+  Align: yes #if no, include path to count matrix below
+    Count_matrix: /path/to/count/matrix.txt #or xls
+  Differential_Expression: yes 
+  Splicing: yes
+  Overlap_of_genes: yes #if starting at overlap, include path to gene lists below
+    Sig_matrix: /path/to/sig/matrix.xls #xls file with name in row 1. Will overlap every two columns (ie.1v2,3v4..etc)
+#### Lab Options ####
+Lab: Nimer #default 'Nimer'. If 'other', fill in extra details below
+Scratch_folder: /path/to/scratch/  #staging directory
+RSEM_STAR_index: /path/to/genome/index/folder/name
+Kallisto_index: /path/to/genome/index/folder/name
+ERCC_STAR_index: /path/to/ERCC/index/folder/name
+ChrNameLength_file: /path/to/chrNameLength/file.txt #tab delimited file with chromosome names and lengths used for indicies.
+Pegasus_Project:
