@@ -8,13 +8,13 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 5. Spike-in quantificaiton (if applicable)
 6. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
 7. Generation of scaled (reads per million) bigwig files from transcriptome alignment
-7. Differential expression using DESeq2 (from scaled or spike-in sample normlalization)
+7. Differential expression using DESeq2 (from scaled or spike-in sample normalization)
 8. Overlap with signifiantly differentially expressed genes (q<0.05, 2 & 1.5 FC) with Sleuth (Kallisto) q<0.05 DE genes 
 9. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
 10. GO and KEGG enrichment of DE genes
 11. GSEA from test statistic ranked gene lists from DESeq2
 12. PCA analysis
-13. Overlap of multiple DE significant gene lists and scaled venn output.
+13. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output.
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.
 In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
@@ -22,7 +22,7 @@ All submission scripts, error and output files are saved.
 
 ## Instructions for installation and use:
 
-### This pipeline is compatable with UM Pegasus using project nimerlab
+### This pipeline is compatable with UM Pegasus.
 
 1. Download https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh to your nethome folder.
 2. Install miniconda: 'bash ~/Miniconda3-latest-Linux-x86_64.sh'
@@ -72,8 +72,6 @@ All submission scripts, error and output files are saved.
 
 ## To Do:
 1. Add splicing analyses.
-2. Fine tune stop and start points.
-3. ICA analysis.
-4. rename GSEA output folders and link to results index.html
-5. scale bw by scale factors (save scale factors as exp.scale)
+2. ICA analysis.
+3. rename GSEA output folders and link to results index.html
 
