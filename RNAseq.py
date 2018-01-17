@@ -230,15 +230,16 @@ def parse_yaml():
                 count += 1
             else:
                 break
-        print("Samples: "+ '\n', file=open(exp.log_file, 'a'))
-        print(str(exp.samples) + '\n', file=open(exp.log_file, 'a'))
+        print("Samples: ", file=open(exp.log_file, 'a'))
+        for number,sample in exp.samples.items():
+            print('{number}: {sample}'.format(number=number,sample=sample), file=open(exp.log_file, 'a'))
         
         #Out Folder
         os.makedirs(exp.out_dir, exist_ok=True)
         print("Pipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
         
         #Differential Expression Groups
-        if yml['Tasks']['Differential_expression']:
+        if yml['Tasks']['Differential_Expression']:
             for key, item in yml['Groups'].items():
                 if item == None:
                     pass
@@ -343,12 +344,10 @@ def parse_yaml():
                     for name,items in exp.designs.items():
                         print('{}:'.format(name), file=open(exp.log_file,'a'))
                         print(str(items['colData']), file=open(exp.log_file,'a'))
-                        print('{} design:'.format(name), file=open(exp.log_file, 'a')) 
-                        print(str(items['design']), file=open(exp.log_file,'a'))
 
         #Initialize DE sig overlaps
         for comparison, design in exp.designs.items():
-            if exp.start == 'Counts':
+            if 'Sleuth' in exp.tasks_complete:
                 exp.de_sig_overlap[comparison] = False
             elif yml['Mode'].lower() == 'deseq2':
                 exp.de_sig_overlap[comparison] = False
@@ -360,7 +359,7 @@ def parse_yaml():
             exp.tasks_complete.append('Overlaps')
             print('Not performing signature overlaps', file=open(exp.log_file,'a'))
 
-        elif (yml['Tasks']['Differential'] == False) and yml['Tasks']['Overlap_of_genes']:
+        elif (yml['Tasks']['Differential_Expression'] == False) and yml['Tasks']['Overlap_of_genes']:
             gene_file=yml['Sig_matrix']
             if os.path.exists(gene_file):
                 print("Gene lists found at {}".format(gene_file), file=open(exp.log_file,'a'))
@@ -374,7 +373,7 @@ def parse_yaml():
                 overlap_number = 1
                 count = 0
                 if len(gene_fileDF.columns)%2 == 0:
-                    for (len(gene_fileDF.columns)/2):
+                    for x in range(len(gene_fileDF.columns)/2):
                         overlap_name='Gene_Overlap_{}'.format(str(overlap_number))
                         list_1 = gene_fileDF.columns[count]
                         list_2 = gene_fileDF.columns[count + 1]
@@ -391,7 +390,7 @@ def parse_yaml():
                 raise IOError("Gene List not found. If not doing differential expression, you need to provide an list of genes for overlaps.", file=opne(exp.log_file, 'a'))
 
         #DE Overlaps
-        elif yml['Tasks']['Overlap_of_genes']
+        elif yml['Tasks']['Overlap_of_genes']:
             for key, item in yml['Overlaps'].items():
                 if item == None:
                     pass    
@@ -412,7 +411,7 @@ def parse_yaml():
         
         return exp
 
-def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
+def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project):
     '''
     Sends job to LSF pegasus.ccs.miami.edu
     '''
@@ -443,7 +442,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file):
                                      rand_id=rand_id,
                                      q=q,
                                      mem=mem,
-                                     project=exp.project
+                                     project=project
                                     )
     
     job_path_name = job_log_folder + job_name+'.sh'
@@ -473,14 +472,16 @@ def job_wait(id_list, job_log_folder, log_file):
             print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(log_file, 'a'))
     
 def fastq_cat(exp):
+    
+    return exp
     '''
-    Illumina basespace changed format for fastq downloads.  This def needs to be updated to reflect this.
-    '''
+    #Illumina basespace changed format for fastq downloads.  This def needs to be updated to reflect this.
+    
     if 'Fastq_cat' in exp.tasks_complete:
         return exp
 
     else:
-        '''
+        
         ### Better way may be to glob all files in fastq subfolders
 
         files_all = glob.glob(exp.fastq_folder + '**/**/*.gz', recursive=True)
@@ -509,9 +510,7 @@ def fastq_cat(exp):
 
         exp.tasks_complete.append('Fastq_cat')
         return exp
-        '''
-        print('Pipeline not set up to handle fastq merging yet.', file=open(exp.log_file,'a'))
-        raise RaiseError('Pipeline not set up to handle fastq merging yet.  Use "cat file1 file2 > final_file" to manually merge then restart.')
+    '''
 
 def stage(exp):
     '''
@@ -573,7 +572,8 @@ def fastqc(exp):
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
                                            mem=1000,
-                                           log_file=exp.log_file
+                                           log_file=exp.log_file,
+                                           project=exp.project
                                           )
                                  )
 
@@ -632,7 +632,8 @@ def fastq_screen(exp):
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
                                            mem=3000,
-                                           log_file=exp.log_file
+                                           log_file=exp.log_file,
+                                           project=exp.project
                                           )
                                  )
                 time.sleep(1)
@@ -649,7 +650,7 @@ def fastq_screen(exp):
             #change to experimental directory in scratch
             os.chdir(exp.scratch)
             exp.tasks_complete.append('Fastq_screen')
-            print('Screening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            print('\nScreening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
             
             return exp
 
@@ -671,7 +672,7 @@ def trim(exp):
 
     else:
         try:
-            print('Beginning fastq trimming: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+            print('Beginning fastq trimming: '  + str(datetime.datetime.now()), file=open(exp.log_file, 'a'))
                 
             #change to experimental directory in scratch
             os.chdir(exp.fastq_folder)
@@ -702,7 +703,8 @@ def trim(exp):
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
                                                    mem=1000,
-                                                   log_file=exp.log_file
+                                                   log_file=exp.log_file,
+                                                   project=exp.project
                                                   )
                                          )
                     
@@ -772,7 +774,8 @@ def spike(exp):
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
                                                    mem=5000,
-                                                   log_file=exp.log_file
+                                                   log_file=exp.log_file,
+                                                   project=exp.project
                                                   )
                                          )
 
@@ -880,7 +883,8 @@ def rsem(exp):
                                                     job_log_folder=exp.job_folder,
                                                     q= 'bigmem',
                                                     mem=60000,
-                                                    log_file=exp.log_file
+                                                    log_file=exp.log_file,
+                                                    project=exp.project
                                                     )
                                           )
                         time.sleep(5)
@@ -953,7 +957,8 @@ def kallisto(exp):
                                                    job_log_folder=exp.job_folder,
                                                    q= 'general',
                                                    mem=10000,
-                                                   log_file=exp.log_file
+                                                   log_file=exp.log_file,
+                                                   project=exp.project
                                                   )
                                          )
 
@@ -1005,7 +1010,8 @@ def count_matrix(exp):
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
                                        mem=1000,
-                                       log_file=exp.log_file
+                                       log_file=exp.log_file,
+                                       project=exp.project
                                       )
                              )
             
@@ -1443,7 +1449,8 @@ def GSEA(exp):
                                                job_log_folder=exp.job_folder,
                                                q= 'general',
                                                mem=3000,
-                                               log_file=exp.log_file
+                                               log_file=exp.log_file,
+                                               project=exp.project
                                               )
                                      )
                     time.sleep(1)
@@ -1604,7 +1611,7 @@ def overlaps(exp):
                         venn = pd.Series([len(gene_list[list_names[0]])-len(exp.overlap_results[name]),
                                           len(gene_list[list_names[1]])-len(exp.overlap_results[name]),
                                           len(overlap_results[name])
-                                         ]
+                                         ],
                                          index= list_names + ['Overlap']
                                         )
                         plot_venn2(venn,name,out_dir)
@@ -1652,7 +1659,8 @@ def final_qc(exp):
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
                                        mem=1000,
-                                       log_file=exp.log_file
+                                       log_file=exp.log_file,
+                                       project=exp.project
                                       )
                              )
             

@@ -26,7 +26,7 @@ Samples:
 ERCC_spike: # yes if ERCC spike-ins used.
 Genome: #hg38 or mm10
 Fastq_directory: /path/to/fastq/
-Hard_trim:2,4 #Hard clips 2 bp of the front of each R1 and R2 and 4 bp off the end.
+Hard_trim: 2,4 #Hard clips 2 bp of the front of each R1 and R2 and 4 bp off the end.
 #### Differential Expression Options ####
 Groups:
   Exp_1: 1,2,3,4 #Sample numbers in Exp Group 1
