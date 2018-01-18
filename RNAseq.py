@@ -22,8 +22,7 @@ Reads an experimetnal design yaml file (Version 0.3).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
-    - rename GSEA output folders and link to results index.html
-    - rMATS or DEXseq
+    - STAR 2 pass: straberry, DEXseq or rMATS for splicing?
     - ICA with chi-square with de groups
 
 '''
@@ -425,13 +424,13 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project):
     #!/bin/bash
 
     #BSUB -J JOB_{job_name}_ID_{random_number}
-    #BSUB {project}
+    #BSUB -R "rusage[mem={mem}]"
     #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
     #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
     #BSUB -W 120:00
     #BSUB -n 1
     #BSUB -q {q}
-    #BSUB -R "rusage[mem={mem}]"
+    #BSUB {project}
 
     {commands_string_list}'''.format(job_name = job_name,
                                      job_log_folder=job_log_folder,
@@ -1437,14 +1436,19 @@ def GSEA(exp):
 
                 print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
  
-                gmts=['h.all','c2.cp.kegg','c5.bp','c5.mf','c2.cgp']
-                for gset in gmts:
-                    set_dir=out_compare + '/' + gset 
+                gmts={'h.all': 'Hallmarks',
+                	  'c2.cp.kegg': 'KEGG',
+                	  'c5.bp': 'GO_Biological_Process',
+                	  'c5.mf': 'GO_Molecular_Function',
+                	  'c2.cgp': 'Curated_Gene_Sets'
+                	  }
+                for gset,name in gmts.items():
+                    set_dir=out_compare + '/' + name 
                     os.makedirs(set_dir, exist_ok=True)
 
                     command_list = ['module rm python java perl',
                                     'source activate RNAseq',
-                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {gset} -gui false'.format(gset=gset,comparison=comparison)
+                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name)
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
@@ -1462,9 +1466,14 @@ def GSEA(exp):
             job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
             for comparison,design in exp.designs.items():
-                if 'index.html' != glob.glob('{loc}/{comparison}/h.all/*/index.html'.format(loc=out_dir, comparison=comparison))[0].split('/')[-1]:
-                    raise RaiseError('Error during GSEA for {comparison} submission.'.format(comparison=comparison))
-
+                for gset,name in gmts.items():
+                	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))
+                	dir=path.split('/')[-1]
+                	if 'index.html' == '{}/index.html'.format(path))[0].split('/')[-1]:
+                		os.chdir('{loc}/{comparison}/{name}'.fomrat(loc=out_dir, comparison=comparison,name=name))
+                		os.symlink('{}/index.html'.format(dir),'results.html')
+                	else:
+                		print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
 
             os.chdir(exp.scratch)
             exp.tasks_complete.append('GSEA')
@@ -1706,7 +1715,7 @@ def finish(exp):
         print('\n{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
         print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
         
-        scratch_log= exp.scratch + exp.name + "-" + exp.date + '.log'
+        scratch_log= exp.scratch + exp.log_file.split("/")[-1]
         copy2(exp.log_file, scratch_log)
         rmtree(exp.out_dir)
         copytree(exp.scratch, exp.out_dir)
