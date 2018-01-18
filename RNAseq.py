@@ -1375,8 +1375,8 @@ def GO_enrich(exp):
 
     else:
         try:
-            out_dir = exp.scratch + 'GO_Enrichment'
-            os.makedirs(out_dir, exist_ok=True)
+            GO_dir=exp.scratch + 'GO_enrichment/'
+            os.makedirs(GO_dir, exist_ok=True)
             
             for comparison,design in exp.designs.items():
                 print('Beginning GO enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1385,7 +1385,9 @@ def GO_enrich(exp):
                     if len(sig) == 0:
                         print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring GO enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
                     else:
-                        enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=out_dir)
+                        GO_out = GO_dir + comparison + '/'
+                        os.makedirs(GO_out,exist_ok=True)
+                        enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=GO_out)
 
             exp.tasks_complete.append('GO_enrich')
             print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1394,7 +1396,7 @@ def GO_enrich(exp):
 
         except:
             print('Error during GO enrichment.', file=open(exp.log_file,'a'))
-            filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+            filename= '{out}{name}_incomplete_at_GO.pkl'.format(out=exp.scratch, name=exp.name)
             with open(filename, 'wb') as experiment:
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during GO enrichment. Fix problem then resubmit with same command to continue from last completed step.')
@@ -1503,7 +1505,6 @@ def PCA(exp):
                 bpca_df['group']= design['colData']['main_comparison'].tolist()
                 bpca_df['name']= design['colData']['sample_names'].tolist()
                     
-                fig = plt.clf()
                 fig = plt.figure(figsize=(8,8), dpi=100)
                 ax = fig.add_subplot(111)
                 ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
