@@ -714,7 +714,7 @@ def trim(exp):
                 scan += 1
             
             #move logs to qc folder        
-            print('Trimming logs are found in stdout files from bsub.  Cutadapt does not handle log files in multi-core mode.', file=open(exp.log_file, 'a'))
+            print('\nTrimming logs are found in stdout files from bsub.  Cutadapt does not handle log files in multi-core mode.', file=open(exp.log_file, 'a'))
 
             for number,sample in exp.samples.items():
                 if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) not in glob.glob(exp.fastq_folder + '*.gz'):
@@ -900,8 +900,9 @@ def rsem(exp):
                     del_file='{RSEM_out}{sample}.{file}'.format(RSEM_out=RSEM_out, sample=sample,file=file)
                     if os.path.isfile(del_file):
                         os.remove(del_file)
-                    if os.path.isdir(exp.qc_folder):
-                        move('{RSEM_out}{sample}.models.pdf'.format(RSEM_out=RSEM_out, sample=sample), '{QC_folder}{sample}.models.pdf'.format(QC_folder=exp.qc_folder,sample=sample))
+                    pdf = '{RSEM_out}{sample}.models.pdf'.format(RSEM_out=RSEM_out, sample=sample)
+                    if os.path.isdir(exp.qc_folder) and os.path.isfile(pdf):
+                        move(pdf, '{QC_folder}{sample}.models.pdf'.format(QC_folder=exp.qc_folder,sample=sample))
 
             os.chdir(exp.scratch)
             exp.tasks_complete.append('RSEM')
