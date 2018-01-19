@@ -71,7 +71,8 @@ All submission scripts, error and output files are saved.
 	- RNAseq.enrichr(gene_list=[], description='', out_dir='')
 
 ## To Do:
-1. Add splicing analyses.
-2. ICA analysis.
-3. rename GSEA output folders and link to results index.html
+1. STAR 2 pass option followed by straberry and DEXseq for splicing.
+2. Generate vst counts for all samples as matrix for output (and PCA/tSNE for all as option)
+3. ICA analysis with chi-square for comparisons for component.
+4. Change ERCC handling to measure and plot ERCC but never to use as normalization.  potentially add RUVseq for ERCC as option?
 

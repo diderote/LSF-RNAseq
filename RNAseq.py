@@ -24,6 +24,9 @@ Requires a conda environment 'RNAseq' made from environment.yml
 To do:
     - STAR 2 pass: straberry, DEXseq or rMATS for splicing?
     - ICA with chi-square with de groups
+    - add counts for all samples
+    - t-SNE and PCA for all samples  (add as option)
+    - change option to plot and measure ERCC but never use for normalization.  RUVseq?
 
 '''
 
@@ -1132,6 +1135,9 @@ def DESeq2(exp):
                                                            sep="\t"
                                                           )
 
+            #Variance Stabalized count matrix for all samples.
+            
+
             print(session(), file=open(exp.log_file, 'a'))    
             exp.tasks_complete.append('DESeq2')
             print('DESeq2 differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
@@ -1525,7 +1531,8 @@ def PCA(exp):
 
                 for i,sample in enumerate(bpca_df['name'].tolist()):
                     xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
-                    ax.annotate(sample, xy= xy, xytext=xy, textcoords='offset points', arrowprops=dict(arrowstyle="-"))             
+                    xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))]
+                    ax.annotate(sample, xy= xy, xytext=xytext)             
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
                 ax.figure.savefig(out_dir + '{comparison}_PCA.png'.format(comparison=comparison))
                 ax.figure.savefig(out_dir + '{comparison}_PCA.svg'.format(comparison=comparison))
