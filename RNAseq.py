@@ -24,9 +24,8 @@ Requires a conda environment 'RNAseq' made from environment.yml
 To do:
     - STAR 2 pass: straberry, DEXseq or rMATS for splicing?
     - ICA with chi-square with de groups
-    - add counts for all samples
-    - t-SNE and PCA for all samples  (add as option)
-    - change option to plot and measure ERCC but never use for normalization.  RUVseq?
+    - t-SNE (add as option)
+    - add RUVseq for ERCC
 
 '''
 
@@ -255,12 +254,12 @@ def parse_yaml():
             
             #Normalization method
             if yml['Normalization'] == 'ERCC':
-                exp.norm = 'ERCC'
-                print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
+                exp.norm = 'bioinformatic' #Changed from 'ERCC'
+                #print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
             elif yml['Normalization'] == 'bioinformatic':
-                print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
+                #print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
             else:
-                print("I don't know the " + yml['Normalization'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
+                #print("I don't know the " + yml['Normalization'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
         
             for key, comparison in yml['Comparisons'].items():
                 if comparison == None:
@@ -1075,8 +1074,10 @@ def DESeq2(exp):
                 colData=designs['colData']
                 design=ro.Formula(designs['design'])
                 data=count_matrix[designs['all_samples']]
-                data = data[data.sum(axis=1) > 1]
-                data = round(data).astype(int)
+
+                # filtering for genes with more than 5 counts in two samples
+                data = round(data[data[data > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
+
                 dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
                                                                colData=colData,
                                                                design=design
@@ -1084,15 +1085,17 @@ def DESeq2(exp):
                 
                 dds[comparison] = deseq.DESeq(dds[comparison])
                 
-                if exp.norm == 'ERCC':
-                    print('Determining ERCC size factors...'+ '\n', file=open(exp.log_file, 'a'))
+                if exp.spike:
+                    print('Determining ERCC variation...'+ '\n', file=open(exp.log_file, 'a'))
                     ERCC_data = exp.spike_counts[designs['all_samples']]
                     ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
                     ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
                     deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds[comparison])
                     sizeFactors=ro.r("sizeFactors")
-                    dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
-                    dds[comparison] = deseq.DESeq(dds[comparison])
+                    
+                    #Legacy:  Do not scale by ERCC size factors
+                    #dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
+                    #dds[comparison] = deseq.DESeq(dds[comparison])
 
                     #compare size factors from DESeq2 and ERCC for inconsistencies
                     ERCC_vector=pandas2ri.ri2py_vector(sizeFactors(ERCC_size))
@@ -1100,19 +1103,19 @@ def DESeq2(exp):
                     if len(ERCC_vector) == len(deseq2_vector):
                         for x in range(len(ERCC_vector)):
                             if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
-                                print('ERCC spike ({x} in list) is greater than 10 percent different than deseq2 size factor for {comparison}.  Will not perform Sleuth overlap for significance. \n'.format(x=x+1,comparison=comparison), file=open(exp.log_file,'a'))
+                                print('ERCC spike ({x} in list) is greater than 10 percent different than deseq2 size factor for {comparison}. \n'.format(x=x+1,comparison=comparison), file=open(exp.log_file,'a'))
                                 print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
                                 print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
                                 print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
-                                exp.de_sig_overlap[comparison]=False
-                                break
+                                #exp.de_sig_overlap[comparison]=False
+                                #break
                             else:
-                                print('ERCC spike-in is comparable to DESeq2 size-factor, using DESeq2 scaling for {comparison}.  Will perform Sleuth overlap for significance. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                                print('ERCC spike-in is comparable to DESeq2 size-factor. using DESeq2 scaling for {comparison}. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
                                 print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
                                 print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
                                 print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
                     else:
-                        RaiseError('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison))
+                        print('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison), file=open(exp.log_file,'a'))
 
                 #DESeq2 results
                 exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
@@ -1136,7 +1139,21 @@ def DESeq2(exp):
                                                           )
 
             #Variance Stabalized count matrix for all samples.
-            
+            colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A']*exp.sample_number})
+            design=ro.Formula("~1")
+            count_matrix = round(count_matrix[count_matrix[count_matrix > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
+            dds_all = deseq.DESeqDataSetFromMatrix(countData = count_matrix.values,
+                                                   colData=colData,
+                                                   design=design
+                                                  )
+            exp.de_results['all_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds_all)))
+            exp.de_results['all_vst'].index=count_matrix.index
+            exp.de_results['all_vst'].columns=count_matrix.columns
+            exp.de_results['all_vst'].to_csv(out_dir +'ALL-samples-VST-counts.txt', 
+                                             header=True, 
+                                             index=True, 
+                                             sep="\t"
+                                            )
 
             print(session(), file=open(exp.log_file, 'a'))    
             exp.tasks_complete.append('DESeq2')
@@ -1287,6 +1304,17 @@ def sigs(exp):
                     exp.sig_lists[comparison]['2FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
                     exp.sig_lists[comparison]['15FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
                     exp.sig_lists[comparison]['15FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
+
+            out_dir = exp.scratch + 'Signatures/'
+            os.makedirs(out_dir, exist_ok=True)
+            for comparison, sigs in exp.sig_lists.items():
+                out_dir=out_dir + comparison + '/'
+                os.makedirs(out_dir, exist_ok=True)
+                for sig, genes in sigs.items():
+                    with open(out_dir+sig+'.txt', 'w') as file:
+                        for gene in genes:
+                            file.write('{}\n'.format(gene))
+
 
             exp.tasks_complete.append('Sigs')
             return exp
@@ -1494,48 +1522,70 @@ def GSEA(exp):
                 pickle.dump(exp, experiment)
             raise RaiseError('Error during GSEA. Fix problem then resubmit with same command to continue from last completed step.')
 
+def plot_PCA(vst, colData, out_dir, name):
+        try:
+            from sklearn.decomposition import PCA
+            import matplotlib
+            matplotlib.use('agg')
+            import matplotlib.pyplot as plt 
+            import matplotlib.patches as mpatches
+
+            pca = PCA(n_components=2)
+            bpca = bpca=pca.fit_transform(vst.drop('gene_name', axis=1).T)
+            pca_score = pca.explained_variance_ratio_
+            bpca_df = pd.DataFrame(bpca)
+            bpca_df.index = vst.drop('gene_name',axis=1).T.index
+            bpca_df['name']= colData['sample_names'].tolist()
+
+            fig = plt.figure(figsize=(8,8), dpi=100)
+            ax = fig.add_subplot(111)
+            if len(group) == 0:
+                ax.scatter(bcpa_df[0], bpca_df[1], marker='o', color='black')
+            else:
+                bpca_df['group']= colData['main_comparison'].tolist()
+                ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
+                ax.scatter(bpca_df[bpca_df.group == 'Control'][0],bpca_df[bpca_df.group == 'Control'][1], marker='o', color='red')
+                red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
+                blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
+
+            ax.set_xlabel('PCA Component 1: {var}% variance'.format(var=int(pca_score[0]*100))) 
+            ax.set_ylabel('PCA Component 2: {var}% varinace'.format(var=int(pca_score[1]*100)))
+
+
+            for i,sample in enumerate(bpca_df['name'].tolist()):
+                xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
+                xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))])
+                ax.annotate(sample, xy= xy, xytext=xytext)             
+            
+            if len(group) != 0:
+                ax.legend(handles=[blue_patch, red_patch], loc=1)
+            
+            ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
+            ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
+
 def PCA(exp):
 
     if 'PCA' in exp.tasks_complete:
         return exp
     else:
         try:
-
-            from sklearn.decomposition import PCA
-            import matplotlib
-            matplotlib.use('agg')
-            import matplotlib.pyplot as plt 
-            import matplotlib.patches as mpatches
-            
             out_dir = exp.scratch + 'DESeq2_PCA/'
             os.makedirs(out_dir, exist_ok=True)
             
             for comparison,design in exp.designs.items():
                 print('Starting PCA analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-                pca = PCA(n_components=2)
-                bpca = bpca=pca.fit_transform(exp.de_results[comparison + '_vst'].drop('gene_name', axis=1).T)
-                pca_score = pca.explained_variance_ratio_
-                bpca_df = pd.DataFrame(bpca)
-                bpca_df.index = exp.de_results[comparison + '_vst'].drop('gene_name',axis=1).T.index
-                bpca_df['group']= design['colData']['main_comparison'].tolist()
-                bpca_df['name']= design['colData']['sample_names'].tolist()
-                    
-                fig = plt.figure(figsize=(8,8), dpi=100)
-                ax = fig.add_subplot(111)
-                ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
-                ax.scatter(bpca_df[bpca_df.group == 'Control'][0],bpca_df[bpca_df.group == 'Control'][1], marker='o', color='red')
-                ax.set_xlabel('PCA Component 1: {var}% variance'.format(var=int(pca_score[0]*100))) 
-                ax.set_ylabel('PCA Component 2: {var}% varinace'.format(var=int(pca_score[1]*100)))
-                red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
-                blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
+                plot_PCA(vst=exp.de_results[comparison + '_vst'],
+                         group= design['colData'],
+                         out_dir=out_dir,
+                         name=comparison
+                        )
 
-                for i,sample in enumerate(bpca_df['name'].tolist()):
-                    xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
-                    xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))]
-                    ax.annotate(sample, xy= xy, xytext=xytext)             
-                ax.legend(handles=[blue_patch, red_patch], loc=1)
-                ax.figure.savefig(out_dir + '{comparison}_PCA.png'.format(comparison=comparison))
-                ax.figure.savefig(out_dir + '{comparison}_PCA.svg'.format(comparison=comparison))
+            print('Starting PCA analysis for all samples.', file=open(exp.log_file, 'a'))
+            plot_PCA(vst=exp.de_results['all_vst'],
+                     group=[],
+                     out_dir=out_dir,
+                     name='all_samples'
+                     )
 
             exp.tasks_complete.append('PCA')
             print('PCA for DESeq2 groups complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))

@@ -33,7 +33,6 @@ Groups:
   Exp_2: 5,6,7,8,9 #Sample numbers in Exp Group 2 (leave empty if none)
   Cont_1: 10,11,12,13 #Sample numbers in Control Group 1
   Cont_2: 14,15,16,17,18 #Sample numbers in Control Group 2 (leave empty if none)
-Normalization:  #default 'bioinformatic', second option is 'ERCC'
 Mode:  # 'Combined' performs DE analysis with DESeq2 and Sleuth, second option is 'DESeq2'
 Comparisons: #Groups to compare for differential expression.  Add or remove comparison lines
   Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1

@@ -74,5 +74,5 @@ All submission scripts, error and output files are saved.
 1. STAR 2 pass option followed by straberry and DEXseq for splicing.
 2. Generate vst counts for all samples as matrix for output (and PCA/tSNE for all as option)
 3. ICA analysis with chi-square for comparisons for component.
-4. Change ERCC handling to measure and plot ERCC but never to use as normalization.  potentially add RUVseq for ERCC as option?
+4. Change ERCC handling to measure and plot ERCC but never to use as normalization.  potentially add RUVseq for ERCC for sample visualization.
 
