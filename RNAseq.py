@@ -253,12 +253,12 @@ def parse_yaml():
             print("Parsing experimental design for differential expression..."+ '\n', file=open(exp.log_file, 'a'))
             
             #Normalization method
-            if yml['Normalization'] == 'ERCC':
-                exp.norm = 'bioinformatic' #Changed from 'ERCC'
+            #if yml['Normalization'] == 'ERCC':
+                #exp.norm = 'bioinformatic' #Changed from 'ERCC'
                 #print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
-            elif yml['Normalization'] == 'bioinformatic':
+            #elif yml['Normalization'] == 'bioinformatic':
                 #print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
-            else:
+            #else:
                 #print("I don't know the " + yml['Normalization'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
         
             for key, comparison in yml['Comparisons'].items():
@@ -342,9 +342,9 @@ def parse_yaml():
                     else:
                         raise ValueError(error)  
 
-                    for name,items in exp.designs.items():
-                        print('{}:'.format(name), file=open(exp.log_file,'a'))
-                        print(str(items['colData']), file=open(exp.log_file,'a'))
+            for name,items in exp.designs.items():
+                print('{}:'.format(name), file=open(exp.log_file,'a'))
+                print(str(items['colData']), file=open(exp.log_file,'a'))
 
         #Initialize DE sig overlaps
         for comparison, design in exp.designs.items():
@@ -1482,7 +1482,7 @@ def GSEA(exp):
 
                     command_list = ['module rm python java perl',
                                     'source activate RNAseq',
-                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name)
+                                    'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name)
                                    ]
 
                     exp.job_id.append(send_job(command_list=command_list, 
@@ -1503,7 +1503,7 @@ def GSEA(exp):
                 for gset,name in gmts.items():
                 	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))
                 	dir=path.split('/')[-1]
-                	if 'index.html' == '{}/index.html'.format(path))[0].split('/')[-1]:
+                	if 'index.html' == '{}/index.html'.format(path)[0].split('/')[-1]:
                 		os.chdir('{loc}/{comparison}/{name}'.fomrat(loc=out_dir, comparison=comparison,name=name))
                 		os.symlink('{}/index.html'.format(dir),'results.html')
                 	else:
@@ -1562,6 +1562,8 @@ def plot_PCA(vst, colData, out_dir, name):
             
             ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
             ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
+        except:
+            return print('plot_PCA() failed.')
 
 def PCA(exp):
 
