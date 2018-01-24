@@ -5,10 +5,10 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 2. Screening for contamination of other genomes
 3. Fastq quality measurements
 4. Adapter and quality fastq trimming
-5. Spike-in quantificaiton (if applicable)
+5. Spike-in assessment (if applicable)
 6. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
 7. Generation of scaled (reads per million) bigwig files from transcriptome alignment
-7. Differential expression using DESeq2 (from scaled or spike-in sample normalization)
+7. Differential expression using DESeq2
 8. Overlap with signifiantly differentially expressed genes (q<0.05, 2 & 1.5 FC) with Sleuth (Kallisto) q<0.05 DE genes 
 9. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
 10. GO and KEGG enrichment of DE genes
@@ -69,10 +69,11 @@ All submission scripts, error and output files are saved.
 	- RNAseq.job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file) waits for submitted job to finish
 	- RNAseq.send_job(command_list=[], job_name='', job_log_folder=exp.job_folder, q='', mem='', log_file=exp.log_file) sends job to LSF resource manager
 	- RNAseq.enrichr(gene_list=[], description='', out_dir='')
+	- RNAseq.plot_PCA()
 
 ## To Do:
 1. STAR 2 pass option followed by straberry and DEXseq for splicing.
-2. Generate vst counts for all samples as matrix for output (and PCA/tSNE for all as option)
+2. Optional tSNE
 3. ICA analysis with chi-square for comparisons for component.
-4. Change ERCC handling to measure and plot ERCC but never to use as normalization.  potentially add RUVseq for ERCC for sample visualization.
+4. Add RUVseq for ERCC for sample visualization. (EDAseq inlane GC normalization?)
 
