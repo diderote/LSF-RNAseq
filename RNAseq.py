@@ -26,6 +26,8 @@ To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - add RUVseq for ERCC
+    - check if GSEA already done before starting (glob index.html)
+    - don't transfer trimmed files
 
 '''
 
@@ -1149,6 +1151,8 @@ def DESeq2(exp):
             exp.de_results['all_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds_all)))
             exp.de_results['all_vst'].index=count_matrix.index
             exp.de_results['all_vst'].columns=count_matrix.columns
+            exp.de_results['all_vst']['gene_name']=exp.de_results['all_vst'].index
+            exp.de_results['all_vst']['gene_name']=exp.de_results['all_vst'].gene_name.apply(lambda x: x.split("_")[1])
             exp.de_results['all_vst'].to_csv(out_dir +'ALL-samples-VST-counts.txt', 
                                              header=True, 
                                              index=True, 
@@ -1308,10 +1312,10 @@ def sigs(exp):
             out_dir = exp.scratch + 'Signatures/'
             os.makedirs(out_dir, exist_ok=True)
             for comparison, sigs in exp.sig_lists.items():
-                out_dir=out_dir + comparison + '/'
-                os.makedirs(out_dir, exist_ok=True)
+                sig_out=out_dir + comparison + '/'
+                os.makedirs(sig_out, exist_ok=True)
                 for sig, genes in sigs.items():
-                    with open(out_dir+sig+'.txt', 'w') as file:
+                    with open(sig_out+sig+'.txt', 'w') as file:
                         for gene in genes:
                             file.write('{}\n'.format(gene))
 
@@ -1450,7 +1454,8 @@ def GSEA(exp):
                 mouse2human_dict=mouse2human[1].to_dict()
 
             for comparison,design in exp.designs.items():
-                
+                #check if comparison already done.
+
                 print('GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
                 out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
                 os.makedirs(out_compare, exist_ok=True)
@@ -1503,7 +1508,7 @@ def GSEA(exp):
                 for gset,name in gmts.items():
                 	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))[0]
                 	if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
-                		os.chdir('{loc}/{comparison}/{name}'.fomrat(loc=out_dir, comparison=comparison,name=name))
+                		os.chdir('{loc}/{comparison}/{name}'.format(loc=out_dir, comparison=comparison,name=name))
                 		os.symlink('{}/index.html'.format(path),'results.html')
                 	else:
                 		print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
@@ -1530,16 +1535,16 @@ def plot_PCA(vst, colData, out_dir, name):
             import matplotlib.patches as mpatches
 
             pca = PCA(n_components=2)
-            bpca = bpca=pca.fit_transform(vst.drop('gene_name', axis=1).T)
+            bpca = pca.fit_transform(vst.drop('gene_name', axis=1).T)
             pca_score = pca.explained_variance_ratio_
             bpca_df = pd.DataFrame(bpca)
             bpca_df.index = vst.drop('gene_name',axis=1).T.index
-            bpca_df['name']= colData['sample_names'].tolist()
+            bpca_df['name']= bpca_df.index
 
             fig = plt.figure(figsize=(8,8), dpi=100)
             ax = fig.add_subplot(111)
-            if len(group) == 0:
-                ax.scatter(bcpa_df[0], bpca_df[1], marker='o', color='black')
+            if len(colData) == 0:
+                ax.scatter(bpca_df[0], bpca_df[1], marker='o', color='black')
             else:
                 bpca_df['group']= colData['main_comparison'].tolist()
                 ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
@@ -1556,13 +1561,14 @@ def plot_PCA(vst, colData, out_dir, name):
                 xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))])
                 ax.annotate(sample, xy= xy, xytext=xytext)             
             
-            if len(group) != 0:
+            if len(colData) != 0:
                 ax.legend(handles=[blue_patch, red_patch], loc=1)
             
             ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
             ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
         except:
-            return print('plot_PCA() failed.')
+            raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
+
 
 def PCA(exp):
 
@@ -1576,14 +1582,14 @@ def PCA(exp):
             for comparison,design in exp.designs.items():
                 print('Starting PCA analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
                 plot_PCA(vst=exp.de_results[comparison + '_vst'],
-                         group= design['colData'],
+                         colData= design['colData'],
                          out_dir=out_dir,
                          name=comparison
                         )
 
             print('Starting PCA analysis for all samples.', file=open(exp.log_file, 'a'))
             plot_PCA(vst=exp.de_results['all_vst'],
-                     group=[],
+                     colData=[],
                      out_dir=out_dir,
                      name='all_samples'
                      )

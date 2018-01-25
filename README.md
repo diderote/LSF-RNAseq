@@ -76,4 +76,5 @@ All submission scripts, error and output files are saved.
 2. Optional tSNE
 3. ICA analysis with chi-square for comparisons for component.
 4. Add RUVseq for ERCC for sample visualization. (EDAseq inlane GC normalization?)
+5. Change trimming to optional (STAR and Kallisto perform well without trimming) or only trim if flagged as problem.
 
