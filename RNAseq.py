@@ -1501,11 +1501,10 @@ def GSEA(exp):
 
             for comparison,design in exp.designs.items():
                 for gset,name in gmts.items():
-                	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))
-                	dir=path.split('/')[-1]
-                	if 'index.html' == '{}/index.html'.format(path)[0].split('/')[-1]:
+                	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))[0]
+                	if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
                 		os.chdir('{loc}/{comparison}/{name}'.fomrat(loc=out_dir, comparison=comparison,name=name))
-                		os.symlink('{}/index.html'.format(dir),'results.html')
+                		os.symlink('{}/index.html'.format(path),'results.html')
                 	else:
                 		print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
 
