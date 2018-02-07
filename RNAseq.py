@@ -1002,7 +1002,7 @@ def count_matrix(exp):
                 matrix = matrix + exp.scratch + 'RSEM_results/' + sample + '.genes.results '
                 columns.append(sample)
                 
-            matrix = matrix + '> {loc}RSEM.count.matrix'.format(loc=exp.scratch + 'RSEM_results/')
+            matrix = matrix + '> {loc}RSEM.count.matrix.txt'.format(loc=exp.scratch + 'RSEM_results/')
                 
             command_list = ['module rm python',
                             'source activate RNAseq',
