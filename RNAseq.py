@@ -1355,7 +1355,7 @@ def clustermap(exp):
                 if len(sig) == 0:
                     print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
                 else:
-                    CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r')
+                    CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
                     CM.savefig('{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
                     CM.savefig('{out_dir}{comparison}_2FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
         
@@ -1363,7 +1363,7 @@ def clustermap(exp):
                 if len(sig15) == 0:
                     print('There are no significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
                 else:
-                    CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r')
+                    CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
                     CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
                     CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
             
@@ -1634,9 +1634,17 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     patch=['10','01','11']
     colors=['green','blue','teal']
     for patch,color in zip(patch,colors):
-        venn_plot.get_patch_by_id(patch).set_color(color)
+        venn_plot.get_patch_by_id(patch).set_color('none')
         venn_plot.get_patch_by_id(patch).set_alpha(0.4)
-        venn_plot.get_patch_by_id(patch).set_edgecolor('none')    
+        venn_plot.get_patch_by_id(patch).set_edgecolor('none')   
+
+    c= venn2_circles(subsets=(Series.iloc[0], Series.iloc[1], Series.iloc[2]))
+    colors_circle=['green','blue']
+    for circle,color in zip(c,colors_circle): 
+        circle.set_edgecolor(color)
+        circle.set_alpha(0.8)
+        circle.set_linewidth(3)
+
      
     plt.title(string_name_of_overlap + " Overlaps")
     plt.tight_layout()
