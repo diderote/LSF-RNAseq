@@ -1768,7 +1768,7 @@ def pipeline():
     exp = preprocess(exp)
     exp = align(exp)
     exp = diff_exp(exp)
-    if 'MultiQC' in exp.tasks_complete:
+    if 'MultiQC' not in exp.tasks_complete:
         exp = final_qc(exp)
     finish(exp)
 
