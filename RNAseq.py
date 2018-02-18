@@ -1168,6 +1168,7 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     '''
     import matplotlib
     matplotlib.use('agg')
+    import matplotlib.pyplot as plt
     import seaborn as sns
     import numpy as np
 
@@ -1177,7 +1178,7 @@ def volcano(results, sig_up, sig_down, name, out_dir):
 
     results['logp'] = -np.log10(results.pvalue)
 
-    scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', coor='gray', alpha=0.1, s=10, label='_nolegend_')
+    scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', color='gray', alpha=0.1, s=10, label='_nolegend_')
 
     scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange, 
                          results[results.gene_name.apply(lambda x: x in sig_up)].logp,
