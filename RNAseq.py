@@ -156,9 +156,9 @@ def parse_yaml():
 
         #Set temp
         if yml['Lab'].lower() == 'nimer':
-        	set_temp='/scratch/projects/nimerlab/tmp'
+            set_temp='/scratch/projects/nimerlab/tmp'
         else:
-        	set_temp='/scratch'
+            set_temp='/scratch'
         sub.run('export TMPDIR=' + set_temp, shell=True)
         print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
 
@@ -1369,11 +1369,11 @@ def GSEA(exp):
         print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
         gmts={'h.all': 'Hallmarks',
-        	  'c2.cp.kegg': 'KEGG',
-        	  'c5.bp': 'GO_Biological_Process',
-        	  'c5.mf': 'GO_Molecular_Function',
-        	  'c2.cgp': 'Curated_Gene_Sets'
-        	  }
+              'c2.cp.kegg': 'KEGG',
+              'c5.bp': 'GO_Biological_Process',
+              'c5.mf': 'GO_Molecular_Function',
+              'c2.cgp': 'Curated_Gene_Sets'
+              }
         for gset,name in gmts.items():
             set_dir=out_compare + '/' + name 
             os.makedirs(set_dir, exist_ok=True)
@@ -1399,12 +1399,12 @@ def GSEA(exp):
 
     for comparison,design in exp.designs.items():
         for gset,name in gmts.items():
-        	path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))[0]
-        	if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
-        		os.chdir('{loc}/{comparison}/{name}'.format(loc=out_dir, comparison=comparison,name=name))
-        		open('Within each folder click "index.html" for results','w')
-        	else:
-        		print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
+            path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))[0]
+            if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
+                os.chdir('{loc}/{comparison}/{name}'.format(loc=out_dir, comparison=comparison,name=name))
+                open('Within each folder click "index.html" for results','w')
+            else:
+                print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
 
     os.chdir(exp.scratch)
     exp.tasks_complete.append('GSEA')
@@ -1666,82 +1666,82 @@ def finish(exp):
 
 def preprocess(exp):
     try:
-	    pipe_stage='preprocessing'
-	    #exp=fastq_cat(exp)
-	    if 'Stage' not in exp.tasks_complete:
-	    	pipe_stage = 'staging'
-	    	exp=stage(exp)
-	    if 'Fastq_screen' not in exp.tasks_complete:
-	    	pipe_stage = 'contamination screening'
-	    	exp=fastq_screen(exp)
-	    if 'Trim' not in exp.tasks_complete:
-	    	pipe_stage = 'fastq trimming'
-		    exp=trim(exp)
-	    if 'FastQC' not in exp.tasks_complete:
-	    	pipe_stage = 'FastQC'
-	    	exp=fastqc(exp)  
-	    return exp
-	except:
-		print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
+        pipe_stage='preprocessing'
+        #exp=fastq_cat(exp)
+        if 'Stage' not in exp.tasks_complete:
+            pipe_stage = 'staging'
+            exp=stage(exp) 
+        if 'Fastq_screen' not in exp.tasks_complete:
+            pipe_stage = 'contamination screening'
+            exp=fastq_screen(exp)
+        if 'Trim' not in exp.tasks_complete:
+            pipe_stage = 'fastq trimming'
+            exp=trim(exp)
+        if 'FastQC' not in exp.tasks_complete:
+            pipe_stage = 'FastQC'
+            exp=fastqc(exp)  
+        return exp
+    except:
+        print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
         filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
 
 def align(exp):
-	try:
-		pipe_stage='alignment'
-	    if 'Spike' not in exp.tasks_complete:
-	    	pipe_stage = 'spike in processing'
-	    	exp=spike(exp)
-	    if 'RSEM' not in exp.tasks_complete:
-	    	pipe_stage = 'STAR-RSEM alignment'
-		    exp=rsem(exp)
-	    if 'Kallisto' not in exp.tasks_complete:
-	    	pipe_stage = 'Kallisto alignment'
-		    exp=kallisto(exp)
-	    return exp
-	except:
-		print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
+    try:
+        pipe_stage='alignment'
+        if 'Spike' not in exp.tasks_complete:
+            pipe_stage = 'spike in processing'
+            exp=spike(exp)
+        if 'RSEM' not in exp.tasks_complete:
+            pipe_stage = 'STAR-RSEM alignment'
+            exp=rsem(exp)
+        if 'Kallisto' not in exp.tasks_complete:
+            pipe_stage = 'Kallisto alignment'
+            exp=kallisto(exp)
+        return exp
+    except:
+        print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
         filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
 
 def diff_exp(exp):
-	try:
-		pipe_stage='differential expression'
-	    if 'Count_Matrix' not in exp.tasks_complete:
-	    	pipe_stage = 'count matrix generation'
-	    	exp = count_matrix(exp)
-	    if 'DESeq2' not in exp.tasks_complete:
-	    	pipe_stage = 'DESeq2'
-		    exp = DESeq2(exp)
-	    if 'Sleuth' not in exp.tasks_complete:
-	    	pipe_stage = 'Sleuth'
-	    	exp = Sleuth(exp)
-	    if 'Sigs' not in exp.tasks_complete:
-	    	pipe_stage = 'signature generation'
-	    	exp = sigs(exp)
-	    if 'Heatmaps' not in exp.tasks_complete:
-	    	pipe_stage = 'heatmap generation'
-	    	sep = clustermap(exp)
-	    if 'GO_enrich' not in exp.tasks_complete:
-	    	pipe_stage = 'GO enrichment'
-	    	exp = GO_enrich(exp)
-	    if 'GSEA' not in exp.tasks_complete:
-	    	pipe_stage = 'GSEA'
-	        exp = GSEA(exp)
-	    if 'PCA' not in exp.tasks_complete:
-	    	pipe_stage = 'PCA'
-		    exp = PCA(exp)
-	    if 'Overlap' not in exp.tasks_complete:
-	    	pipe_stage = 'signature overlaps'
-	    	exp = overlaps(exp)
-	    #exp = ICA(exp)  
-	    return exp
-	except:
-		print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
+    try:
+        pipe_stage='differential expression'
+        if 'Count_Matrix' not in exp.tasks_complete:
+            pipe_stage = 'count matrix generation'
+            exp = count_matrix(exp)
+        if 'DESeq2' not in exp.tasks_complete:
+            pipe_stage = 'DESeq2'
+            exp = DESeq2(exp)
+        if 'Sleuth' not in exp.tasks_complete:
+            pipe_stage = 'Sleuth'
+            exp = Sleuth(exp)
+        if 'Sigs' not in exp.tasks_complete:
+            pipe_stage = 'signature generation'
+            exp = sigs(exp)
+        if 'Heatmaps' not in exp.tasks_complete:
+            pipe_stage = 'heatmap generation'
+            sep = clustermap(exp)
+        if 'GO_enrich' not in exp.tasks_complete:
+            pipe_stage = 'GO enrichment'
+            exp = GO_enrich(exp)
+        if 'GSEA' not in exp.tasks_complete:
+            pipe_stage = 'GSEA'
+            exp = GSEA(exp)
+        if 'PCA' not in exp.tasks_complete:
+            pipe_stage = 'PCA'
+            exp = PCA(exp)
+        if 'Overlap' not in exp.tasks_complete:
+            pipe_stage = 'signature overlaps'
+            exp = overlaps(exp)
+        #exp = ICA(exp)  
+        return exp
+    except:
+        print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
         filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
@@ -1753,7 +1753,7 @@ def pipeline():
     exp = align(exp)
     exp = diff_exp(exp)
     if 'MultiQC' in exp.tasks_complete:
-	    exp = final_qc(exp)
+        exp = final_qc(exp)
     finish(exp)
 
 if __name__ == "__main__":
