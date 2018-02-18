@@ -947,9 +947,9 @@ def count_matrix(exp):
     #Wait for jobs to finish
     job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
     
-    counts = pd.read_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
+    counts = pd.read_csv('{loc}RSEM.count.matrix.txt'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
     counts.columns = columns
-    counts.to_csv('{loc}RSEM.count.matrix'.format(loc=(exp.scratch + 'RSEM_results/')), header=True, index=True, sep="\t")
+    counts.to_csv('{loc}RSEM.count.matrix.txt'.format(loc=(exp.scratch + 'RSEM_results/')), header=True, index=True, sep="\t")
 
     exp.count_matrix = counts
     exp.tasks_complete.append('Count_Matrix')
