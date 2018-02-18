@@ -10,10 +10,11 @@ This pipline handles processing and analyses for RNAseq data.  When fully implem
 7. Generation of scaled (reads per million) bigwig files from transcriptome alignment
 7. Differential expression using DESeq2
 8. Overlap with signifiantly differentially expressed genes (q<0.05, 2 & 1.5 FC) with Sleuth (Kallisto) q<0.05 DE genes 
+9. Volcano plots generated from DESeq2 results and 2FC and 1.5FC signifcant genes
 9. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
 10. GO and KEGG enrichment of DE genes
 11. GSEA from test statistic ranked gene lists from DESeq2
-12. PCA analysis
+12. PCA plots of all and experimental samples
 13. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output.
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.
@@ -70,11 +71,11 @@ All submission scripts, error and output files are saved.
 	- RNAseq.send_job(command_list=[], job_name='', job_log_folder=exp.job_folder, q='', mem='', log_file=exp.log_file) sends job to LSF resource manager
 	- RNAseq.enrichr(gene_list=[], description='', out_dir='')
 	- RNAseq.plot_PCA()
+	- RNAseq.volcano()
 
 ## To Do:
 1. STAR 2 pass option followed by straberry and DEXseq for splicing.
 2. Optional tSNE
 3. ICA analysis with chi-square for comparisons for component.
 4. Add RUVseq for ERCC for sample visualization. (EDAseq inlane GC normalization?)
-5. Change trimming to optional (STAR and Kallisto perform well without trimming) or only trim if flagged as problem.
 
