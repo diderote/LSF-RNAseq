@@ -1505,7 +1505,7 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     '''
     import matplotlib
     matplotlib.use('agg')
-    from matplotlib_venn import venn2
+    from matplotlib_venn import venn2, venn2_circles
     import matplotlib.pyplot as plt
     
     plt.figure(figsize=(7,7))
