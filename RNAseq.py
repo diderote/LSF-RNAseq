@@ -1151,42 +1151,44 @@ def Sleuth(exp):
     return exp
 
 def volcano(results, sig_up, sig_down, name, out_dir):
-	'''
-	Generate volcano plot from deseq2 results dataframe and significant genes
-	'''
-
-	import matplotlib
+    '''
+    Generate volcano plot from deseq2 results dataframe and significant genes
+    '''
+    import matplotlib
     matplotlib.use('agg')
     import seaborn as sns
     import numpy as np
 
     sns.set(context='paper', style='white', font_scale=1)
-	fig = plt.figure(figsize=(6,6), dpi=200)
-	ax = fig.add_subplot(111)
+    fig = plt.figure(figsize=(6,6), dpi=200)
+    ax = fig.add_subplot(111)
 
-	results['logp'] = -np.log10(results.pvalue)
+    results['logp'] = -np.log10(results.pvalue)
 
-	scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', coor='gray', alpha=0.1, s=10, label='_nolegend_')
-	scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange, 
-						 results[results.gene_name.apply(lambda x: x in sig_up)].logp,
-						 marker = 'o', alpha = 0.3, color='firebrick', s=10, label= 'Genes UP'
-						)
-	scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_down)].log2FoldChange,
-						 results[results.gene_name.apply(lambda x: x in sig_down)].logp,
-						 marker='o', alpha = 0.3, color='steelblue', s=10, label = 'Genes DOWN'
-						)
+    scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', coor='gray', alpha=0.1, s=10, label='_nolegend_')
 
-	ax.axes.set_xlabel('Fold Change (log$_2$)')
-	ax.axes.set_ylabel('p-value (-log$_10$)')
+    scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange, 
+                         results[results.gene_name.apply(lambda x: x in sig_up)].logp,
+                         marker = 'o', alpha = 0.3, color='firebrick', s=10, label= 'Genes UP'
+                         )
 
-	ax.legend(loc = 'upper left', markerscale=3)
-	fig.suptitle(name)
+    scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_down)].log2FoldChange,
+                         results[results.gene_name.apply(lambda x: x in sig_down)].logp,
+                         marker='o', alpha = 0.3, color='steelblue', s=10, label = 'Genes DOWN'
+                        )
 
-	sns.despine()
-	plt.tight_layout()
-	plt.savefig('{}/{}-Volcano-Plot.png'.format(out_dir,name), dpi=200)
-	plt.savefig('{}/{}-Volcano-Plot.svg'.format(out_dir,name), dpi=200)
+    ax.axes.set_xlabel('Fold Change (log$_2$)')
+    ax.axes.set_ylabel('p-value (-log$_10$)')
 
+    ax.legend(loc = 'upper left', markerscale=3)
+    fig.suptitle(name)
+
+    sns.despine()
+    plt.tight_layout()
+    plt.savefig('{}/{}-Volcano-Plot.png'.format(out_dir,name), dpi=200)
+    plt.savefig('{}/{}-Volcano-Plot.svg'.format(out_dir,name), dpi=200)
+
+    return
 
 def sigs(exp):
     '''
