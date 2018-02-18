@@ -1248,9 +1248,12 @@ def sigs(exp):
             exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN
 
         #volcano_plot    
+        volcano_out = out_dir + comparison + "/"
+        os.makedirs(volcano_out, exist_ok=True)
+
         print('Generating Volcano Plots using DESeq2 results for significance', file=open(exp.log_file, 'a'))
-        volcano(results = DE_results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
-        volcano(results = DE_results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
+        volcano(results = DE_results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir=volcano_out)
+        volcano(results = DE_results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir=volcano_out)
 
     for comparison, sigs in exp.sig_lists.items():
         sig_out=out_dir + comparison + '/'
