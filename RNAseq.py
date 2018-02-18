@@ -113,7 +113,11 @@ def parse_yaml():
 
     #Passing paramters to new object 
     exp.name = yml['Name']
-    exp.out_dir = yml['Output_directory']
+    
+    if yml['Output_directory'][-1] == '/':
+        exp.out_dir = yml['Output_directory'] + yml['Name'] + '/'
+    else:
+        exp.out_dir = yml['Output_directory'] + '/' + yml['Name'] + '/'
     
     #Make out directory if it doesn't exist
     os.makedirs(exp.out_dir, exist_ok=True)

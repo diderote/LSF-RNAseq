@@ -1,6 +1,6 @@
 #### Vestion0.3 #####
 Name: 'Experiment_Name' #Experiment name
-Output_directory: /projects/ctsi/nimerlab/to/directory/ #Output directory.
+Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
 #### Experimental Setup ####
 Total_sample_number: 12 #Total number
 Samples:   
