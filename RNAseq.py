@@ -770,10 +770,16 @@ def spike(exp):
                     exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
                 exp.spike_counts = exp.spike_counts.iloc[4:,:]
                 exp.spike_counts.to_csv('{loc}ERCC.count.matrix'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
+
         except:
             print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
             raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
         
+        #check to see if there were any spike in reads, if not, change
+        if exp.spike_counts.loc['ERCC-00002',:].sum(axis=1) < 50:
+            print('ERCC has low or no counts, skipping further spike-in analysis.', file=open(exp.log_file,'a'))
+            exp.spike = False
+
         print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
     
     else:
@@ -1242,8 +1248,8 @@ def sigs(exp):
 
         #volcano_plot    
         print('Generating Volcano Plots using DESeq2 results for significance', file=open(exp.log_file, 'a'))
-        volcano(results = results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
-        volcano(results = results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
+        volcano(results = DE_results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
+        volcano(results = DE_results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
 
     for comparison, sigs in exp.sig_lists.items():
         sig_out=out_dir + comparison + '/'
