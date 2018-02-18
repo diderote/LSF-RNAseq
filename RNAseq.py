@@ -46,7 +46,7 @@ class Experiment(object):
                   spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
                   job_id=[],de_groups={},norm='bioinformatic',designs={}, overlaps={}, gene_lists={},
                   tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
-                  genome_indicies={}, project=''
+                  genome_indicies={},project=''
                  ):
         self.scratch = scratch
         self.date = date
@@ -358,6 +358,8 @@ def parse_yaml():
         #Initialize DE sig overlaps
         for comparison, design in exp.designs.items():
             if 'Sleuth' in exp.tasks_complete:
+                exp.de_sig_overlap[comparison] = False
+            elif yml['Mode'] == None:
                 exp.de_sig_overlap[comparison] = False
             elif yml['Mode'].lower() == 'deseq2':
                 exp.de_sig_overlap[comparison] = False
