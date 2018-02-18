@@ -43,7 +43,6 @@ Overlaps:
 Tasks: #Default is 'All'
   Align: yes #if no, include path to count matrix below
   Differential_Expression: yes 
-  Splicing: yes
   Overlap_of_genes: yes #if starting at overlap, include path to gene lists below
 #### Optional ####
 Count_matrix: /path/to/count/matrix.txt #or xls.

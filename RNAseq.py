@@ -22,11 +22,12 @@ Reads an experimetnal design yaml file (Version 0.3).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
-    - STAR 2 pass: straberry, DEXseq or rMATS for splicing?
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - add RUVseq for ERCC vizualization
     - check if GSEA already done before starting (glob index.html)
+
+Built with python 3
 
 '''
 
@@ -200,10 +201,6 @@ def parse_yaml():
             exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA_DESeq2','PCA']
             print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
-        if yml['Tasks']['Splicing'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['Splicing']
-            print('Not perfomring splicing analysis', file=open(exp.log_file,'a'))
-
         #Spike
         if yml['ERCC_spike']:
             exp.spike = True
@@ -223,7 +220,10 @@ def parse_yaml():
         if yml['Lab'].lower()=='nimer':
             exp.project = '-P nimerlab'
         elif yml['Lab'].lower() == 'other':
-            exp.project = '-P ' + yml['Pegasus_Project']
+            if len(yml['Pegasus_Project']) == 0:
+                exp.project = ''
+            else:
+                exp.project = '-P ' + yml['Pegasus_Project']
         
         #Counts
         if not 0 < yml['Total_sample_number'] < 19:
@@ -1150,10 +1150,51 @@ def Sleuth(exp):
     exp.tasks_complete.append('Sleuth')
     return exp
 
+def volcano(results, sig_up, sig_down, name, out_dir):
+	'''
+	Generate volcano plot from deseq2 results dataframe and significant genes
+	'''
+
+	import matplotlib
+    matplotlib.use('agg')
+    import seaborn as sns
+    import numpy as np
+
+    sns.set(context='paper', style='white', font_scale=1)
+	fig = plt.figure(figsize=(6,6), dpi=200)
+	ax = fig.add_subplot(111)
+
+	results['logp'] = -np.log10(results.pvalue)
+
+	scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', coor='gray', alpha=0.1, s=10, label='_nolegend_')
+	scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange, 
+						 results[results.gene_name.apply(lambda x: x in sig_up)].logp,
+						 marker = 'o', alpha = 0.3, color='firebrick', s=10, label= 'Genes UP'
+						)
+	scatter = ax.scatter(results[results.gene_name.apply(lambda x: x in sig_down)].log2FoldChange,
+						 results[results.gene_name.apply(lambda x: x in sig_down)].logp,
+						 marker='o', alpha = 0.3, color='steelblue', s=10, label = 'Genes DOWN'
+						)
+
+	ax.axes.set_xlabel('Fold Change (log$_2$)')
+	ax.axes.set_ylabel('p-value (-log$_10$)')
+
+	ax.legend(loc = 'upper left', markerscale=3)
+	fig.suptitle(name)
+
+	sns.despine()
+	plt.tight_layout()
+	plt.savefig('{}/{}-Volcano-Plot.png'.format(out_dir,name), dpi=200)
+	plt.savefig('{}/{}-Volcano-Plot.svg'.format(out_dir,name), dpi=200)
+
+
 def sigs(exp):
     '''
-    Identifies significantly differentially expressed genes at 2 fold and 1.5 fold cutoffs with q<0.05.
+    Identifies significantly differentially expressed genes at 2 fold and 1.5 fold cutoffs with q<0.05. Generates Volcano Plots of results.
     '''
+    out_dir = exp.scratch + 'Sigs_and_volcano_plots/'
+    os.makedirs(out_dir, exist_ok=True)
+
     for comparison,design in exp.designs.items():
 
         if exp.de_sig_overlap[comparison]:
@@ -1177,16 +1218,25 @@ def sigs(exp):
         else:
             print('Only using significant genes called from STAR/RSEM/DESeq2 for {comparison} analyses.'.format(comparison=comparison), file=open(exp.log_file, 'a'))
         
-            results=exp.de_results['DE2_'+comparison]
+            DE_results=exp.de_results['DE2_'+comparison]
 
             exp.sig_lists[comparison] = {}
-            exp.sig_lists[comparison]['2FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > 1)].gene_name.tolist())
-            exp.sig_lists[comparison]['2FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -1)].gene_name.tolist())
-            exp.sig_lists[comparison]['15FC_UP'] = set(results[(results.padj < 0.05) & (results.log2FoldChange > .585)].gene_name.tolist())
-            exp.sig_lists[comparison]['15FC_DN'] = set(results[(results.padj < 0.05) & (results.log2FoldChange < -.585)].gene_name.tolist())
 
-    out_dir = exp.scratch + 'Signatures/'
-    os.makedirs(out_dir, exist_ok=True)
+            DE2_2UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > 1)].gene_name.tolist())
+            DE2_2DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -1)].gene_name.tolist())
+            DE2_15UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > .585)].gene_name.tolist())
+            DE2_15DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -.585)].gene_name.tolist())
+
+            exp.sig_lists[comparison]['2FC_UP'] = DE2_2UP
+            exp.sig_lists[comparison]['2FC_DN'] = DE2_2DN
+            exp.sig_lists[comparison]['15FC_UP'] = DE2_15UP
+            exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN
+
+        #volcano_plot    
+        print('Generating Volcano Plots using DESeq2 results for significance', file=open(exp.log_file, 'a'))
+        volcano(results = results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
+        volcano(results = results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir='{}/{}/'.format(out_dir,comparison))
+
     for comparison, sigs in exp.sig_lists.items():
         sig_out=out_dir + comparison + '/'
         os.makedirs(sig_out, exist_ok=True)
@@ -1427,9 +1477,6 @@ def PCA(exp):
     exp.tasks_complete.append('PCA')
     print('PCA for DESeq2 groups complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
 
-    return exp
-
-def splicing(exp):
     return exp
 
 def plot_venn2(Series, string_name_of_overlap, folder):
@@ -1703,7 +1750,6 @@ def pipeline():
     exp = preprocess(exp)
     exp = align(exp)
     exp = diff_exp(exp)
-    #exp = splicing(exp)
     if 'MultiQC' in exp.tasks_complete:
 	    exp = final_qc(exp)
     finish(exp)
