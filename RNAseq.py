@@ -149,14 +149,14 @@ def parse_yaml():
         
         print('Pipeline version ' + str(version) + ' run on ' + exp.date + '\n', file=open(exp.log_file, 'w'))
         print('Beginning RNAseq Analysis: ' + str(datetime.datetime.now()) + '\n', file=open(exp.log_file, 'a'))
-        print('Reading experimental file...' + '\n', file=open(exp.log_file, 'a'))
+        print('Reading experimental file...', file=open(exp.log_file, 'a'))
 
         #Genome
         if yml['Genome'].lower() not in ['hg38', 'mm10']:
             raise ValueError("Genome must be either hg38 or mm10.")
         else:
             exp.genome = yml['Genome'].lower()
-            print('Processing data with: ' + str(exp.genome)+ '\n', file=open(exp.log_file, 'a'))
+            print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
         #Set temp
         if yml['Lab'].lower() == 'nimer':
@@ -164,7 +164,7 @@ def parse_yaml():
         else:
             set_temp='/scratch'
         sub.run('export TMPDIR=' + set_temp, shell=True)
-        print('TMP directory set to ' + set_temp+ '\n', file=open(exp.log_file, 'a'))
+        print('TMP directory set to ' + set_temp, file=open(exp.log_file, 'a'))
 
         #Tasks to complete
         if yml['Tasks']['Align'] == False:
@@ -250,7 +250,7 @@ def parse_yaml():
         
         #Out Folder
         os.makedirs(exp.out_dir, exist_ok=True)
-        print("Pipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
+        print("\nPipeline output folder: " + str(exp.out_dir)+ '\n', file=open(exp.log_file, 'a'))
         
         #Differential Expression Groups
         if yml['Tasks']['Differential_Expression']:
@@ -263,7 +263,7 @@ def parse_yaml():
                     for x in temp:
                         exp.de_groups[key].append(exp.samples[int(x)])
                 
-            print("Parsing experimental design for differential expression..."+ '\n', file=open(exp.log_file, 'a'))
+            print("Parsing experimental design for differential expression...", file=open(exp.log_file, 'a'))
             
             #Normalization method
             #if yml['Normalization'] == 'ERCC':
@@ -356,7 +356,7 @@ def parse_yaml():
                         raise ValueError(error)  
 
             for name,items in exp.designs.items():
-                print('{}:'.format(name), file=open(exp.log_file,'a'))
+                print('\n{}:'.format(name), file=open(exp.log_file,'a'))
                 print(str(items['colData']), file=open(exp.log_file,'a'))
 
         #Initialize DE sig overlaps
@@ -373,7 +373,7 @@ def parse_yaml():
         #Overlaps
         if yml['Tasks']['Overlap_of_genes'] == False:
             exp.tasks_complete.append('Overlaps')
-            print('Not performing signature overlaps', file=open(exp.log_file,'a'))
+            print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
 
         elif (yml['Tasks']['Differential_Expression'] == False) and yml['Tasks']['Overlap_of_genes']:
             gene_file=yml['Sig_matrix']
@@ -398,7 +398,7 @@ def parse_yaml():
                         exp.gene_lists[overlap_name][list_2] = set(gene_fileDF[list_2].tolist())
                         count += 2
                         overlap_number = count/2
-                    print('Performing {} overlaps.'.format(str(count/2)), file=open(exp.log_file,'a'))
+                    print('\nPerforming {} overlaps.'.format(str(count/2)), file=open(exp.log_file,'a'))
                 else:
                     raise IOError("Cannot parse gene lists file. Requires an even number of gene lists.")
 
@@ -412,7 +412,7 @@ def parse_yaml():
                     pass    
                 else:
                     exp.overlaps[key] = item.split('v')
-            print('Overlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
+            print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
             if str(len(list(exp.overlaps.keys()))) != 0:
                 print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
         
