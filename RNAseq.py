@@ -2,7 +2,7 @@
 # coding: utf-8
 
 '''
-Nimerlab RNASeq Pipeline v0.3
+Nimerlab RNASeq Pipeline v0.4
 
 Copyright © 2018 Daniel L. Karl
 
@@ -18,13 +18,12 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Reads an experimetnal design yaml file (Version 0.3).
+Reads an experimetnal design yaml file (Version 0.4).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
-    - add RUVseq for ERCC vizualization
     - check if GSEA already done before starting (glob index.html)
 
 Built with python 3
@@ -35,18 +34,18 @@ import os,re,datetime,glob,pickle,time
 from shutil import copy2,copytree,rmtree,move
 import subprocess as sub
 import pandas as pd
-version=0.3
+version=0.4
 
 class Experiment(object):
     '''
     Experiment object for pipeline
     '''
     def __init__(self, scratch='', date='', name='', out_dir='', job_folder='', qc_folder='', 
-                  log_file='',fastq_folder='',spike=False,count_matrix=pd.DataFrame(), trim=[0,0],
+                  log_file='',fastq_folder='',spike=False, count_matrix=pd.DataFrame(), trim=[0,0],
                   spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
-                  job_id=[],de_groups={},norm='bioinformatic',designs={}, overlaps={}, gene_lists={},
+                  job_id=[],de_groups={},norm='Median-Ratios',designs={}, overlaps={}, gene_lists={},
                   tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
-                  genome_indicies={},project=''
+                  genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame()
                  ):
         self.scratch = scratch
         self.date = date
@@ -76,6 +75,8 @@ class Experiment(object):
         self.de_sig_overlap = de_sig_overlap
         self.genome_indicies=genome_indicies
         self.project=project
+        self.gc_norm=gc_norm
+        self.gc_count_matrix = gc_count_matrix
 
 class RaiseError(Exception):
     pass
@@ -168,7 +169,7 @@ def parse_yaml():
 
         #Tasks to complete
         if yml['Tasks']['Align'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['Fastq_cat','Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
+            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
             print('Not performing alignment.', file=open(exp.log_file,'a'))
             count_matrix_loc=yml['Count_matrix']
             if os.path.exists(count_matrix_loc):
@@ -201,16 +202,50 @@ def parse_yaml():
         else:
             raise IOError('Please specify whether or not to perform alignment.', file=open(exp.file_log, 'a'))   
         
+        #GC_normalizaton
+        if yml['Tasks']['GC_Normalization']:
+            exp.gc_norm = True
+        else:
+            exp.tasks_complete.append('GC')
+
+        #Support Files:
+        if yml['Lab'].lower() == 'nimer':
+            exp.genome_indicies['ERCC_Mix'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/cms_095046.txt'
+            if exp.genome == 'mm10':
+                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/mm10_GC_Content.txt'
+            elif exp.genome == 'hg38':
+                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
+        elif yml['Lab'].lower() == 'other':
+            exp.genome_indicies['ERCC_Mix'] = yml['ERCC_Mix_file']
+            exp.genome_indicies['GC_Content'] = yml['GC_Content_file']
+
+        #No DE option
         if yml['Tasks']['Differential_Expression'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA_DESeq2','PCA']
+            exp.tasks_complete = exp.tasks_complete + ['GC','DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA_DESeq2','PCA']
             print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
         #Spike
+        if yml['ERCC_spike'] or (yml['Normalization'].lower() == 'ercc'):
+            if yml['Tasks']['Align'] == False:
+                spike_matrix_loc = yml['Spike_matrix']
+                if os.path.exists(spike_matrix_loc):
+                    print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
+                    if spike_matrix_loc.split('.')[-1] == 'txt':
+                        exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
+                    elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
+                        exp.spike_counts = pd.read_excel(spike_matrix_loc)
+                    else:
+                        raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
+                else:
+                    raise IOError("Spike Count Matrix Not Found. ")
+                     
         if yml['ERCC_spike']:
             exp.spike = True
 
         #Fastq Folder
         if 'Stage' not in exp.tasks_complete:
+            if '/' != yml['Fastq_directory'][-1]:
+                yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
             if os.path.isdir(yml['Fastq_directory']):
                 exp.fastq_folder=yml['Fastq_directory']
             else:
@@ -263,16 +298,19 @@ def parse_yaml():
                     for x in temp:
                         exp.de_groups[key].append(exp.samples[int(x)])
                 
-            print("Parsing experimental design for differential expression...", file=open(exp.log_file, 'a'))
+            print("Parsing experimental design for differential expression...\n", file=open(exp.log_file, 'a'))
             
             #Normalization method
-            #if yml['Normalization'] == 'ERCC':
-                #exp.norm = 'bioinformatic' #Changed from 'ERCC'
-                #print('Normalizing samples for differential expression analysis using ERCC spike-ins'+ '\n', file=open(exp.log_file, 'a'))
-            #elif yml['Normalization'] == 'bioinformatic':
-                #print('Normalizing samples for differential expression analysis using conventional size factors'+ '\n', file=open(exp.log_file, 'a'))
-            #else:
-                #print("I don't know the " + yml['Normalization'] + ' normalization method.  Using size factors.'+ '\n', file=open(exp.log_file, 'a'))
+            if yml['Normalization'].lower() == 'ercc':
+                exp.norm = 'ERCC' 
+                print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
+            elif yml['Normalization'].lower() == 'empirical':
+                print('Normalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
+                exp.norm = 'empirical'
+            elif yml['Normalization'].lower() == 'median-ratios':
+                print('Normalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
+            else:
+                print("I don't know the " + yml['Normalization'] + ' normalization method.  Using default median-ratios.'+ '\n', file=open(exp.log_file, 'a'))
         
             for key, comparison in yml['Comparisons'].items():
                 if comparison == None:
@@ -324,6 +362,7 @@ def parse_yaml():
                             exp.designs[key]['design'] = "~main_comparison"
                             exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
                                                                         "main_comparison": exp.designs[key]['main_comparison']})
+                            exp.designs[key]['test'] = 'wald'
                          
                     elif E_type == 2:
                         if E1 not in groups or E2 not in groups:
@@ -352,6 +391,7 @@ def parse_yaml():
                             exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
                                                                        "main_comparison": exp.designs[key]['main_comparison'],
                                                                        "compensation": exp.designs[key]['compensation']})
+                            exp.designs[key]['test'] = 'lrt'
                     else:
                         raise ValueError(error)  
 
@@ -363,11 +403,11 @@ def parse_yaml():
         for comparison, design in exp.designs.items():
             if 'Sleuth' in exp.tasks_complete:
                 exp.de_sig_overlap[comparison] = False
-            elif yml['Mode'] == None:
+            elif yml['Tasks']['Signature_Mode'] == None:
                 exp.de_sig_overlap[comparison] = False
-            elif yml['Mode'].lower() == 'deseq2':
+            elif yml['Tasks']['Signature_Mode'].lower() == 'deseq2':
                 exp.de_sig_overlap[comparison] = False
-            else:
+            elif yml['Tasks']['Signature_Mode'].lower() == 'combined':
                 exp.de_sig_overlap[comparison] = True
             
         #Overlaps
@@ -423,7 +463,7 @@ def parse_yaml():
         #Initialized Process Complete List
         exp.tasks_complete.append('Parsed')
 
-        print('Experiment file parsed: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Experiment file parsed: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         
         return exp
 
@@ -486,47 +526,6 @@ def job_wait(id_list, job_log_folder, log_file):
             running = False
         else:
             print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(log_file, 'a'))
-    
-def fastq_cat(exp):
-    
-    return exp
-    '''
-    #Illumina basespace changed format for fastq downloads.  This def needs to be updated to reflect this.
-    
-    if 'Fastq_cat' in exp.tasks_complete:
-        return exp
-
-    else:
-        
-        ### Better way may be to glob all files in fastq subfolders
-
-        files_all = glob.glob(exp.fastq_folder + '**/**/*.gz', recursive=True)
-        files = []
-        for file in files_all:
-            if file in files:
-                pass
-            else:
-                files.append(file)
-
-        os.makedirs(exp.fastq_folder + 'temp/', exist_ok=True)
-        for file in files:
-            shutil.move(file,exp.fastq_folder + 'temp/')
-
-        for number in exp.sample_number: 
-            sample = 'G{num:02d}'.format(num=number + 1)  #PROBLEM IS THAT CORE CONVENTION CHANGES FREQUENTLY
-            for R in ['R1','R2']:
-                Reads=glob.glob('{loc}*{sample}*_{R}_*.fastq.gz'.format(loc=exp.fastq_folder + 'temp/',sample=sample,R=R))
-                command = 'cat '    
-                for read in Reads:
-                    command = command + read + ' '
-                command = command + '> {loc}{sample}_{R}.fastq.gz'.format(loc=exp.fastq_folder,sample=exp.samples[sample_number + 1],R=R)
-                os.system(command)
-        
-        rmtree(exp.fastq_folder + 'temp/')
-
-        exp.tasks_complete.append('Fastq_cat')
-        return exp
-    '''
 
 def stage(exp):
     '''
@@ -548,7 +547,7 @@ def stage(exp):
     
     exp.tasks_complete.append('Stage')
     
-    print('Staging complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Staging complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
     return exp
 
@@ -556,7 +555,7 @@ def fastqc(exp):
     '''
     Performs fastq spec analysis with FastQC
     '''
-    print('Assessing fastq quality.'+ '\n', file=open(exp.log_file, 'a'))
+    print('Assessing fastq quality. \n', file=open(exp.log_file, 'a'))
 
     #Make QC folder
     exp.qc_folder = exp.scratch + 'QC/'
@@ -592,7 +591,7 @@ def fastqc(exp):
      
     exp.tasks_complete.append('FastQC')
     
-    print('FastQC complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('FastQC complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -601,7 +600,7 @@ def fastq_screen(exp):
     Checks fastq files for contamination with alternative genomes using Bowtie2
     '''
 
-    print('Screening for contamination during sequencing: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Screening for contamination during sequencing: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     #Make QC folder
     exp.qc_folder = exp.scratch + 'QC/'
@@ -641,7 +640,7 @@ def fastq_screen(exp):
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
     exp.tasks_complete.append('Fastq_screen')
-    print('\nScreening complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Screening complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -650,7 +649,7 @@ def trim(exp):
     Trimming based on standard UM SCCC Core Nextseq 500 technical errors.  Cudadapt can hard clip both ends, but may ignore 3' in future.
     '''
 
-    print('Beginning fastq trimming: '  + str(datetime.datetime.now()), file=open(exp.log_file, 'a'))
+    print('Beginning fastq trimming: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         
     #change to experimental directory in scratch
     os.chdir(exp.fastq_folder)
@@ -702,7 +701,7 @@ def trim(exp):
     os.chdir(exp.scratch)
 
     exp.tasks_complete.append('Trim')
-    print('Trimming complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Trimming complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
     return exp
 
@@ -711,7 +710,7 @@ def spike(exp):
     Align sequencing files to ERCC index using STAR aligner.
     '''
     if exp.spike:
-        print("Processing with ERCC spike-in: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print("Processing with ERCC spike-in: {}\n".format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
             
         ERCC_folder=exp.scratch + 'ERCC/'
         os.makedirs(ERCC_folder, exist_ok=True)
@@ -769,21 +768,72 @@ def spike(exp):
                 for number,sample in exp.samples.items():
                     exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
                 exp.spike_counts = exp.spike_counts.iloc[4:,:]
-                exp.spike_counts.to_csv('{loc}ERCC.count.matrix'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
+                exp.spike_counts.to_csv('{loc}ERCC.count.matrix.txt'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
 
         except:
             print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
             raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
         
         #check to see if there were any spike in reads, if not, change
-        if exp.spike_counts.loc['ERCC-00002',:].sum(axis=1) < 50:
+        if exp.spike_counts.loc['ERCC-00002',:].sum(axis=0) < 50:
             print('ERCC has low or no counts, skipping further spike-in analysis.', file=open(exp.log_file,'a'))
             exp.spike = False
 
-        print("ERCC spike-in processing complete: " + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        if exp.spike:
+            import numpy as np
+            import matplotlib
+            matplotlib.use('agg')
+            import matplotlib.pyplot as plt 
+            import seaborn as sns
+
+            # Prep spike counts for plot (only if Nimer)
+            if exp.genome_indicies['ERCC_Mix'] != None:
+                # Filtering for counts with more than 5 counts in two samples
+                spike_counts = exp.spike_counts.copy()
+                spike_counts = spike_counts[spike_counts[spike_counts > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]
+                mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
+                mix = mix.rename(columns={'concentration in Mix 1 (attomoles/ul)': 'Mix_1',
+                                          'concentration in Mix 2 (attomoles/ul)': 'Mix_2'})
+                names = list(spike_counts.columns)
+                spike_counts = spike_counts.join(mix)
+                
+                merged_spike = pd.DataFrame(columns=['value','Mix_1','Mix_2'])
+                name = []
+                length = len(spike_counts)
+                for sample in names:
+                    merged_spike = pd.concat([merged_spike,
+                                             spike_counts[[sample,'Mix_1','Mix_2']].rename(columns={sample:'value'})],
+                                            ignore_index=True)
+                    name=name + [sample]*length
+                merged_spike['Sample']=name
+                merged_spike['log'] = merged_spike.value.apply(lambda x: np.log2(x))
+                merged_spike['log2_Mix_1']=np.log2(merged_spike.Mix_1)
+                merged_spike['log2_Mix_2']=np.log2(merged_spike.Mix_2)
+
+                # Plot ERCC spike.
+                sns.set(context='paper', font_scale=2, style='white')
+                M1 = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
+                M1.set_ylabels(label='spike-in counts (log2)')
+                M1.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+                plt.title("ERCC Mix 1 Counts per Sample")
+                sns.despine()
+                M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
+
+                sns.set(context='paper', font_scale=2, style='white')
+                M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
+                M2.set_ylabels(label='spike-in counts (log2)')
+                M2.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+                plt.title("ERCC Mix 2 Counts per Sample")
+                sns.despine()
+                M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
+
+            else:
+                print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
+
+        print("ERCC spike-in processing complete: {}\n".format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     else:
-        print("No ERCC spike-in processing."+ '\n', file=open(exp.log_file, 'a'))
+        print("No ERCC spike-in processing.\n", file=open(exp.log_file, 'a'))
     
     exp.tasks_complete.append('Spike')
     return exp 
@@ -806,7 +856,7 @@ def rsem(exp):
     '''
     Alignment to transcriptome using STAR and estimating expected counts using EM
     '''  
-    print('\n Beginning RSEM-STAR alignments: '  + str(datetime.datetime.now()), file=open(exp.log_file, 'a'))
+    print('\n Beginning RSEM-STAR alignments: {}'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     RSEM_out = exp.scratch + 'RSEM_results/'
     os.makedirs(RSEM_out, exist_ok=True)
@@ -866,7 +916,7 @@ def rsem(exp):
 
     os.chdir(exp.scratch)
     exp.tasks_complete.append('RSEM')
-    print('STAR alignemnt and RSEM counts complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('STAR alignemnt and RSEM counts complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
     
@@ -880,7 +930,7 @@ def kallisto(exp):
     scan = 0
     while scan < 2:
 
-        print('Beginning Kallisto alignments: '  + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning Kallisto alignments: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
         #Submit kallisto for each sample
         for number,sample in exp.samples.items():
@@ -959,16 +1009,223 @@ def count_matrix(exp):
 
     exp.count_matrix = counts
     exp.tasks_complete.append('Count_Matrix')
-    print('Sample count matrix complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Sample count matrix complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
+
+def plot_PCA(counts, colData, out_dir, name):
+    try:
+        from sklearn.decomposition import PCA
+        import matplotlib
+        matplotlib.use('agg')
+        import matplotlib.pyplot as plt 
+        import matplotlib.patches as mpatches
+
+        to_remove=['gene_name','id']
+        for x in to_remove:
+            if x in list(counts.columns):
+                counts = counts.drop(x, axis=1)
+
+        pca = PCA(n_components=2)
+        bpca = pca.fit_transform(counts.T)
+        pca_score = pca.explained_variance_ratio_
+        bpca_df = pd.DataFrame(bpca)
+        bpca_df.index = counts.T.index
+        bpca_df['name']= bpca_df.index
+
+        fig = plt.figure(figsize=(8,8), dpi=100)
+        ax = fig.add_subplot(111)
+        if len(colData) == 0:
+            ax.scatter(bpca_df[0], bpca_df[1], marker='o', color='black')
+        else:
+            bpca_df['group']= colData['main_comparison'].tolist()
+            ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
+            ax.scatter(bpca_df[bpca_df.group == 'Control'][0],bpca_df[bpca_df.group == 'Control'][1], marker='o', color='red')
+            red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
+            blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
+
+        ax.set_xlabel('PCA Component 1: {var}% variance'.format(var=int(pca_score[0]*100))) 
+        ax.set_ylabel('PCA Component 2: {var}% varinace'.format(var=int(pca_score[1]*100)))
+
+
+        for i,sample in enumerate(bpca_df['name'].tolist()):
+            xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
+            xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))])
+            ax.annotate(sample, xy= xy, xytext=xytext)             
+        
+        if len(colData) != 0:
+            ax.legend(handles=[blue_patch, red_patch], loc=1)
+        
+        ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
+        ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
+    except:
+        raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
+
+def GC_normalization(exp):
+    '''
+    Within lane loess GC normalization using EDAseq
+    '''
+    import numpy as np
+    import rpy2.robjects as ro
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects import pandas2ri
+
+    pandas2ri.activate()
+
+    edaseq = importr('EDASeq')
+    as_df=ro.r("as.data.frame")
+    assay=ro.r("assay")
+    as_cv = ro.r('as.character')
+    counts = ro.r("counts")
+    fdata=ro.r('fData')
+    normCounts=ro.r('normCounts')
+
+    print('Beginning within-lane GC length/content loess normalization for all samples: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+
+    GC_content = pd.read_csv(exp.genome_indicies['GC_Content'], header=0, index_col=0, sep="\t")
+    raw_counts = exp.count_matrix
+    raw_counts['id']=raw_counts.index
+    raw_counts['id']=raw_counts.id.apply(lambda x: x.split("_")[0].split(".")[0])
+    GC_genes = GC_content.split.tolist()
+
+    #Keep only counts with GC data (based on latest ensembl biomart).  see EDAseq package and use 'biomart' after dropping ensembl name version.
+    GC_counts = round(raw_counts[raw_counts.id.apply(lambda x: x in GC_genes)].drop(columns='id'))
+    EDA_set = edaseq.newSeqExpressionSet(counts=GC_counts.values,featureData=GC_content)
+    gcNorm = edaseq.withinLaneNormalization(EDA_set, 'gc','loess')
+    data_norm = ro.pandas2ri.ri2py_dataframe(normCounts(gcNorm))
+    data_norm.index = GC_counts.index
+    data_norm.columns = GC_counts.columns
+    exp.gc_count_matrix = data_norm
+
+    print('Finished GC normalization: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+    exp.tasks_complete.append('GC')
+
+    return exp 
+
+def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir):
+
+    '''
+    perform lrt deseq2 after RUVseq.
+    data = pandas dataframe
+    design = string of design (ie '~main_comparison')
+    colData = pandas dataframe of DESeq2 format colData
+    type = string 'ercc' or 'empirical'
+    log = log file for output printing
+    ERCC = unsused if 'empirical', else a dataframe of ERCC_counts
+    comparison = string of comparison name
+    out_dir = directory for pca plots
+
+    '''
+    try:
+        import numpy as np
+        import rpy2.robjects as ro
+        from rpy2.robjects.packages import importr
+        from rpy2.robjects import pandas2ri
+        
+        pandas2ri.activate()
+        
+        deseq = importr('DESeq2')
+        ruvseq = importr('RUVSeq')
+        edaseq = importr('EDASeq')
+        as_df=ro.r("as.data.frame")
+        assay=ro.r("assay")
+        as_cv = ro.r('as.character')
+        counts = ro.r("counts")
+        normCounts=ro.r('normCounts')
+        pdata=ro.r('pData')
+
+        os.makedirs(plot_dir, exist_ok=True)
+
+        plot_PCA(counts = RUV_data, colData=colData, out_dir= plot_dir, name= '{}_preRUVseq_raw_counts_PCA'.format(comparison))
+
+        #retain gene name
+        RUV_data['name'] = RUV_data.index
+
+        #RUVseq
+        if norm_type.lower() == 'empirical':
+            print('Performing Normalization by removing unwatned variance of empirical negative control genes for {}: {}\n'.format(comparison,str(datetime.datetime.now())) , file=open(log,'a'))
+            
+            #determining non differentially expressed genes to use as empirical negative controls
+            dds_emp = deseq.DESeqDataSetFromMatrix(countData = RUV_data.drop(columns='name').values,
+                                                   colData=colData,
+                                                   design=ro.Formula(design)
+                                                  )
+            dds_emp = deseq.DESeq(dds_emp)
+            results_emp = pandas2ri.ri2py(as_df(deseq.results(dds_emp)))
+            results_emp.index=RUV_data.index
+            results_emp.sort_values(by='padj', inplace=True)
+            top_de = list(results_emp.head(10000).index)
+            
+            #rename indices to reflect rpy2 conversion to R dataframe
+            RUV_data.index= range(1,(len(RUV_data)+1))
+            
+            #empirical negative controls
+            empirical = list(RUV_data[RUV_data.name.apply(lambda x: x not in top_de)].drop(columns='name').index)
+            
+            #generate normalization scaling based on unwanted variance from empirical negative controls
+            data_set = edaseq.newSeqExpressionSet(RUV_data.drop(columns='name').values, phenoData=colData)
+            RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(empirical), k=1)
+            print(pdata(RUVg_set), file=open(log,'a'))
+
+            print('\nEmpirical negative control normalization complete for {}: {}\n'.format(comparison,str(datetime.datetime.now())), file=open(log, 'a'))
+
+        elif norm_type.lower() == 'ercc':
+            print('Performing Normalization by removing unwanted variance using ERCC spike-ins for {}: {}\n'.format(comparison,str(datetime.datetime.now())), file=open(log,'a'))
+            
+            #rename ERCC join ERCC counts to gene counts and reindex for rpy2 R dataframe
+            ERCC_counts['name'] = ERCC_counts.index
+            ERCC_counts['name'] = ERCC_counts.name.apply(lambda x: '{}_{}'.format(x,x))
+
+            RUV_data = RUV_data.append(ERCC_counts)
+            RUV_data.index= range(1,(len(RUV_data)+1))
+            
+            #generate index locations of ERCC spikes
+            spike_list = list(RUV_data[RUV_data.name.apply(lambda x: x in list(ERCC_counts.name))].index)
+            
+            #normalize samples based on unwanted variance between ERCC spike in controls
+            data_set = edaseq.newSeqExpressionSet(RUV_data.drop(columns='name').values, phenoData=colData)
+            RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(spike_list), k=1)
+            print(pdata(RUVg_set), file=open(log,'a'))
+            print('\nERCC normalization complete for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(log, 'a'))
+
+        else:
+            RaiseError('RUV() takes only "ercc" or "empirical" as options.')
+        
+        #generate normalized counts for pca
+        counts_df = pandas2ri.ri2py(as_df(normCounts(RUVg_set)))
+        counts_df.columns = RUV_data.drop(columns='name').columns
+        plot_PCA(counts = counts_df, colData= colData, out_dir=plot_dir, name='{}_postRUVseq_raw_counts_PCA'.format(comparison))
+
+        #Differential expression (LRT DESeq2) to account for scaled variances between samples
+        if design == '~main_comparison':
+            RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + main_comparison'))
+            RUV_dds = deseq.DESeq(RUV_dds)
+            RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1"))
+        elif design == '~compensation + main_comparison':
+            RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + compensation + main_comparison'))
+            RUV_dds = deseq.DESeq(RUV_dds)
+            RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1 + compensation"))
+            
+        #extract results and relabel samples and genes
+        results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds)))
+        results.index = RUV_data.name
+        vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
+        vst.columns = RUV_data.drop(columns='name').columns
+        vst.index = RUV_data.name
+
+        print('Unwanted variance normalization complete for {comparison} using RUVSeq: {time}'.format(comparison=comparison, time=str(datetime.datetime.now())), file=open(log,'a'))
+
+        return results, vst
+
+    except: 
+        raise RaiseError('Error during RUVseq.')
 
 def DESeq2(exp):
         
     '''
     Differential Expression using DESeq2
     '''
-    print('Beginning DESeq2 differential expression analysis: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Beginning DESeq2 differential expression analysis: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     import numpy as np
     import rpy2.robjects as ro
@@ -984,11 +1241,17 @@ def DESeq2(exp):
     out_dir= exp.scratch + 'DESeq2_results/'
     os.makedirs(out_dir, exist_ok=True)
     
-    count_matrix = exp.count_matrix
+    if exp.gc_norm:
+        print('Using GC normalized RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
+        count_matrix = exp.gc_count_matrix
+    else:
+        print('Using rounded RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
+        count_matrix = exp.count_matrix
+    
     dds={}
     
     for comparison,designs in exp.designs.items():
-        print('Beginning ' + comparison + ': ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning {}: {}\n'.format( comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         colData=designs['colData']
         design=ro.Formula(designs['design'])
         data=count_matrix[designs['all_samples']]
@@ -1000,18 +1263,16 @@ def DESeq2(exp):
                                                        colData=colData,
                                                        design=design
                                                       )
-        
-        dds[comparison] = deseq.DESeq(dds[comparison])
-        
+
         if exp.spike:
-            print('Determining ERCC variation...'+ '\n', file=open(exp.log_file, 'a'))
-            ERCC_data = exp.spike_counts[designs['all_samples']]
+            print('Determining ERCC scaling vs Sample scaling using median of ratios of counts for rough comparison.  This may point out potentially problematic samples.'+ '\n', file=open(exp.log_file, 'a'))
+            ERCC_data = round(exp.spike_counts[designs['all_samples']])
             ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
             ERCC_size = deseq.estimateSizeFactors_DESeqDataSet(ERCC_dds)
             deseq2_size = deseq.estimateSizeFactors_DESeqDataSet(dds[comparison])
             sizeFactors=ro.r("sizeFactors")
             
-            #Legacy:  Do not scale by ERCC size factors
+            #Legacy:  Do not scale by ERCC size factors using DESeq2.
             #dds[comparison].do_slot('colData').do_slot('listData')[1] = sizeFactors(ERCC_size)
             #dds[comparison] = deseq.DESeq(dds[comparison])
 
@@ -1022,22 +1283,57 @@ def DESeq2(exp):
                 for x in range(len(ERCC_vector)):
                     if abs((ERCC_vector[x]-deseq2_vector[x])/(ERCC_vector[x]+deseq2_vector[x])) > 0.1:
                         print('ERCC spike ({x} in list) is greater than 10 percent different than deseq2 size factor for {comparison}. \n'.format(x=x+1,comparison=comparison), file=open(exp.log_file,'a'))
-                        print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
-                        print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
-                        print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
-                        #exp.de_sig_overlap[comparison]=False
-                        #break
-                    else:
-                        print('ERCC spike-in is comparable to DESeq2 size-factor. using DESeq2 scaling for {comparison}. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
-                        print('Samples: ' + str(designs['all_samples']), file=open(exp.log_file,'a'))
-                        print('ERCC size factors: ' + str(ERCC_vector), file=open(exp.log_file,'a'))
-                        print('DESeq2 size factors: '+ str(deseq2_vector), file=open(exp.log_file,'a'))
+                print('Samples: {}\n'.format(str(designs['all_samples'])), file=open(exp.log_file,'a'))
+                print('ERCC size factors: {}'.format(str(ERCC_vector)), file=open(exp.log_file,'a'))
+                print('DESeq2 size factors: {}\n'.format(str(deseq2_vector)), file=open(exp.log_file,'a'))
             else:
-                print('ERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                print('\nERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison), file=open(exp.log_file,'a'))
+        else:
+            pass
+
+        #Differential Expression
+        if exp.norm.lower() == 'median-ratios':
+            print('Using DESeq2 standard normalization of scaling by median of the ratios of observed counts.', file=open(exp.log_file, 'a'))
+            if designs['design'] == '~main_comparison':
+                print('Performing Wald Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
+                dds[comparison] = deseq.DESeq(dds[comparison])
+
+            elif designs['design'] == '~compensation + main_comparison':
+                print('Performing LRT Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
+                dds[comparison] = deseq.DESeq(dds[comparison])
+                dds[comparison] = deseq.DESeq(dds[comparison], test='LRT', reduced=ro.Formula('~compensation'))
+            
+            exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
+            exp.de_results['DE2_' + comparison].index = data.index
+            exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
+            exp.de_results[comparison + '_vst'].columns = data.columns
+            exp.de_results[comparison + '_vst'].index = data.index
+
+        elif exp.norm.lower() == 'ercc':
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst']  = RUV(RUV_data = data, 
+                                                                                            design=designs['design'], 
+                                                                                            colData=colData, 
+                                                                                            norm_type='ERCC', 
+                                                                                            ERCC_counts = round(exp.spike_counts[designs['all_samples']]), 
+                                                                                            log=exp.log_file,
+                                                                                            comparison=comparison,
+                                                                                            plot_dir = exp.scratch + 'PCA/'
+                                                                                            )
+    
+        elif exp.norm.lower() == 'empirical':
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'] = RUV(RUV_data = data, 
+                                                                                           design=designs['design'], 
+                                                                                           colData=colData, 
+                                                                                           norm_type='empirical', 
+                                                                                           ERCC_counts = None, 
+                                                                                           log=exp.log_file,
+                                                                                           comparison=comparison,
+                                                                                           plot_dir = exp.scratch + 'PCA/'
+                                                                                           )
+        else:
+            RaiseError('Can only use "median-ratios", "ercc", or "empirical" for normalization of DESeq2.')
 
         #DESeq2 results
-        exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
-        exp.de_results['DE2_' + comparison].index = data.index
         exp.de_results['DE2_' + comparison].sort_values(by='padj', ascending=True, inplace=True)
         exp.de_results['DE2_' + comparison]['gene_name']=exp.de_results['DE2_'+comparison].index
         exp.de_results['DE2_' + comparison]['gene_name']=exp.de_results['DE2_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
@@ -1047,9 +1343,6 @@ def DESeq2(exp):
                                                    sep="\t"
                                                   )
         #Variance Stabilized log2 expected counts.
-        exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
-        exp.de_results[comparison + '_vst'].columns = data.columns
-        exp.de_results[comparison + '_vst'].index = data.index
         exp.de_results[comparison + '_vst'].to_csv(out_dir + comparison + '-VST-counts.txt', 
                                                    header=True, 
                                                    index=True, 
@@ -1077,8 +1370,48 @@ def DESeq2(exp):
 
     print(session(), file=open(exp.log_file, 'a'))    
     exp.tasks_complete.append('DESeq2')
-    print('DESeq2 differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('DESeq2 differential expression complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
+    return exp
+
+def PCA(exp):
+
+    out_dir = exp.scratch + 'PCA/'
+    os.makedirs(out_dir, exist_ok=True)
+    
+    for comparison,design in exp.designs.items():
+        print('Starting DESeq2 VST PCA analysis for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        plot_PCA(counts=exp.de_results[comparison + '_vst'],
+                 colData= design['colData'],
+                 out_dir=out_dir,
+                 name=comparison
+                )
+
+    print('Starting DESeq2 VST PCA analysis for all samples.', file=open(exp.log_file, 'a'))
+    plot_PCA(counts=exp.de_results['all_vst'],
+             colData=[],
+             out_dir=out_dir,
+             name='all_samples'
+             )
+
+    print('Starting PCA analysis for all raw counts.', file=open(exp.log_file, 'a'))
+    plot_PCA(counts=exp.count_matrix,
+             colData=[],
+             out_dir=out_dir,
+             name='all_raw_counts'
+             )
+
+    if exp.gc_norm:
+        print('starting PCA analysis for gc normalized raw counts.', file=open(exp.log_file, 'a'))
+        plot_PCA(counts = exp.gc_count_matrix,
+                 colData=[],
+                 out_dir=out_dir,
+                 name='gc_nromalized_raw_counts'
+                )
+
+    exp.tasks_complete.append('PCA')
+    print('PCA for DESeq2 groups complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+
     return exp
 
 def Sleuth(exp):
@@ -1099,64 +1432,59 @@ def Sleuth(exp):
     os.makedirs(out_dir, exist_ok=True)
 
     for comparison,design in exp.designs.items():
-        if exp.de_sig_overlap[comparison]:
+        print('Beginning Sleuth differential expression analysis for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
-            print('Beginning Sleuth differential expression analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        path = []
+        for name in design['colData'].sample_names.tolist():
+            path.append(kal_dir + name)
 
-            path = []
-            for name in design['colData'].sample_names.tolist():
-                path.append(kal_dir + name)
-
-            if 'compensation' in design['colData'].columns.tolist():
-                s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
-                                    'compensation': design['colData'].compensation.tolist(),
-                                    'condition': design['colData'].main_comparison.tolist(),
-                                    'path': path
-                                   },
-                                   index=range(1, len(path)+1)
-                                  )
-                s2c = s2c[['sample','compensation','condition','path']]
-                condition=Formula('~ compensation + condition')
-                reduced = Formula('~compensation')
-            else:
-                s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
-                                    'condition': design['colData'].main_comparison.tolist(),
-                                    'path': path
-                                   },
-                                   index=range(1, len(path)+1)
-                                  )
-                s2c = s2c[['sample','condition','path']]
-                condition=Formula('~ condition')
-                reduced = Formula('~1')
-
-            globalenv["s2c"] = s2c
-            r('s2c$path = as.character(s2c$path)')
-            s2c = globalenv["s2c"]
-                
-            if exp.genome == 'mm10':
-                mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
-            elif exp.genome == 'hg38':
-                mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
-            else:
-               raise RaiseError('Error in sleuth, pipeline only handles hg38 and mm10')
-
-            t2g = biomart.getBM(attributes = ro.StrVector(("ensembl_transcript_id_version", "ensembl_gene_id","external_gene_name")), mart=mart)
-            t2g = dplyr.rename(t2g, target_id = 'ensembl_transcript_id_version', ens_gene = 'ensembl_gene_id', ext_gene = 'external_gene_name')
-
-            so = sleuth.sleuth_prep(s2c, target_mapping = t2g, num_cores=1, aggregation_column = 'ens_gene')
-            so = sleuth.sleuth_fit(so, condition, 'full')
-            so = sleuth.sleuth_fit(so, reduced, 'reduced')
-            so = sleuth.sleuth_lrt(so, 'reduced', 'full')
-            print(sleuth.models(so), file=open(exp.log_file,'a'))
-            sleuth_table=sleuth.sleuth_results(so, 'reduced:full','lrt',show_all=True)
-            exp.de_results['SL_' + comparison] = pandas2ri.ri2py(sleuth_table)
-            exp.de_results['SL_' + comparison].to_csv('{out_dir}{comparison}_slueth_results.txt'.format(out_dir=out_dir, comparison=comparison), header=True, index=True, sep="\t")
-
+        if 'compensation' in design['colData'].columns.tolist():
+            s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+                                'compensation': design['colData'].compensation.tolist(),
+                                'condition': design['colData'].main_comparison.tolist(),
+                                'path': path
+                               },
+                               index=range(1, len(path)+1)
+                              )
+            s2c = s2c[['sample','compensation','condition','path']]
+            condition=Formula('~ compensation + condition')
+            reduced = Formula('~compensation')
         else:
-            print('Not performing slueth differential expression analysis for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
+            s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+                                'condition': design['colData'].main_comparison.tolist(),
+                                'path': path
+                               },
+                               index=range(1, len(path)+1)
+                              )
+            s2c = s2c[['sample','condition','path']]
+            condition=Formula('~ condition')
+            reduced = Formula('~1')
+
+        globalenv["s2c"] = s2c
+        r('s2c$path = as.character(s2c$path)')
+        s2c = globalenv["s2c"]
+            
+        if exp.genome == 'mm10':
+            mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
+        elif exp.genome == 'hg38':
+            mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
+        else:
+           raise RaiseError('Error in sleuth, pipeline only handles hg38 and mm10')
+
+        t2g = biomart.getBM(attributes = ro.StrVector(("ensembl_transcript_id_version", "ensembl_gene_id","external_gene_name")), mart=mart)
+        t2g = dplyr.rename(t2g, target_id = 'ensembl_transcript_id_version', ens_gene = 'ensembl_gene_id', ext_gene = 'external_gene_name')
+
+        so = sleuth.sleuth_prep(s2c, target_mapping = t2g, num_cores=1, aggregation_column = 'ens_gene')
+        so = sleuth.sleuth_fit(so, condition, 'full')
+        so = sleuth.sleuth_fit(so, reduced, 'reduced')
+        so = sleuth.sleuth_lrt(so, 'reduced', 'full')
+        print(sleuth.models(so), file=open(exp.log_file,'a'))
+        sleuth_table=sleuth.sleuth_results(so, 'reduced:full','lrt',show_all=True)
+        exp.de_results['SL_' + comparison] = pandas2ri.ri2py(sleuth_table)
+        exp.de_results['SL_' + comparison].to_csv('{out_dir}{comparison}_slueth_results.txt'.format(out_dir=out_dir, comparison=comparison), header=True, index=True, sep="\t")
 
         print(session(), file=open(exp.log_file, 'a'))    
-        print('Sleuth differential expression complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Sleuth differential expression complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
 
     exp.tasks_complete.append('Sleuth')
@@ -1176,7 +1504,7 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     fig = plt.figure(figsize=(6,6), dpi=200)
     ax = fig.add_subplot(111)
 
-    results['logp'] = -np.log10(results.pvalue)
+    results['logp'] = results.pvalue.apply(lambda x: -np.log10(x))
 
     scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', color='gray', alpha=0.1, s=10, label='_nolegend_')
 
@@ -1263,7 +1591,7 @@ def sigs(exp):
                 for gene in genes:
                     file.write('{}\n'.format(gene))
 
-
+    print('Signature and Volcano Plot generation complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     exp.tasks_complete.append('Sigs')
     return exp
 
@@ -1300,7 +1628,7 @@ def clustermap(exp):
             CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
     
     exp.tasks_complete.append('Heatmaps')
-    print('Heatmaps for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Heatmaps for DESeq2 differentially expressed genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1336,7 +1664,7 @@ def GO_enrich(exp):
     os.makedirs(GO_dir, exist_ok=True)
     
     for comparison,design in exp.designs.items():
-        print('Beginning GO enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning GO enrichment for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         
         for name,sig in exp.sig_lists[comparison].items():
             if len(sig) == 0:
@@ -1347,7 +1675,7 @@ def GO_enrich(exp):
                 enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=GO_out)
 
     exp.tasks_complete.append('GO_enrich')
-    print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1382,7 +1710,7 @@ def GSEA(exp):
 
         os.chdir(out_compare)
 
-        print('Beginning GSEA enrichment for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning GSEA enrichment for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
         gmts={'h.all': 'Hallmarks',
               'c2.cp.kegg': 'KEGG',
@@ -1424,77 +1752,8 @@ def GSEA(exp):
 
     os.chdir(exp.scratch)
     exp.tasks_complete.append('GSEA')
-    print('GSEA using DESeq2 stat preranked genes complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('GSEA using DESeq2 stat preranked genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
-    return exp
-
-def plot_PCA(vst, colData, out_dir, name):
-    try:
-        from sklearn.decomposition import PCA
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt 
-        import matplotlib.patches as mpatches
-
-        pca = PCA(n_components=2)
-        bpca = pca.fit_transform(vst.drop('gene_name', axis=1).T)
-        pca_score = pca.explained_variance_ratio_
-        bpca_df = pd.DataFrame(bpca)
-        bpca_df.index = vst.drop('gene_name',axis=1).T.index
-        bpca_df['name']= bpca_df.index
-
-        fig = plt.figure(figsize=(8,8), dpi=100)
-        ax = fig.add_subplot(111)
-        if len(colData) == 0:
-            ax.scatter(bpca_df[0], bpca_df[1], marker='o', color='black')
-        else:
-            bpca_df['group']= colData['main_comparison'].tolist()
-            ax.scatter(bpca_df[bpca_df.group == 'Experimental'][0],bpca_df[bpca_df.group == 'Experimental'][1], marker='o', color='blue')
-            ax.scatter(bpca_df[bpca_df.group == 'Control'][0],bpca_df[bpca_df.group == 'Control'][1], marker='o', color='red')
-            red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
-            blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
-
-        ax.set_xlabel('PCA Component 1: {var}% variance'.format(var=int(pca_score[0]*100))) 
-        ax.set_ylabel('PCA Component 2: {var}% varinace'.format(var=int(pca_score[1]*100)))
-
-
-        for i,sample in enumerate(bpca_df['name'].tolist()):
-            xy=(bpca_df.iloc[i,0], bpca_df.iloc[i,1])
-            xytext=tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval()))*.01),(sum(abs(ax.yaxis.get_data_interval()))*.01)))])
-            ax.annotate(sample, xy= xy, xytext=xytext)             
-        
-        if len(colData) != 0:
-            ax.legend(handles=[blue_patch, red_patch], loc=1)
-        
-        ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
-        ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
-    except:
-        raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
-
-
-def PCA(exp):
-
-    out_dir = exp.scratch + 'DESeq2_PCA/'
-    os.makedirs(out_dir, exist_ok=True)
-    
-    for comparison,design in exp.designs.items():
-        print('Starting PCA analysis for {comparison}: '.format(comparison=comparison) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-        plot_PCA(vst=exp.de_results[comparison + '_vst'],
-                 colData= design['colData'],
-                 out_dir=out_dir,
-                 name=comparison
-                )
-
-    print('Starting PCA analysis for all samples.', file=open(exp.log_file, 'a'))
-    plot_PCA(vst=exp.de_results['all_vst'],
-             colData=[],
-             out_dir=out_dir,
-             name='all_samples'
-             )
-
-    exp.tasks_complete.append('PCA')
-    print('PCA for DESeq2 groups complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-
     return exp
 
 def plot_venn2(Series, string_name_of_overlap, folder):
@@ -1548,7 +1807,7 @@ def overlaps(exp):
     
     if len(exp.overlaps) != 0:
         names=['2FC_UP', '2FC_DN', '15FC_UP','15FC_DN']
-        print('Beginning overlap of significant genes: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning overlap of significant genes: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
         for overlap,comparison_list in exp.overlaps.items():
             if len(comparison_list) != 0:
@@ -1589,22 +1848,26 @@ def overlaps(exp):
             print('Performing GO enrichment for {name} overlaps: {time} \n'.format(name=name,time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))                    
             enrichr(gene_list=list(sig), description='{name}_overlap'.format(name=name),out_dir=out_dir)
 
+            sig_out=out_dir + name + '/'
+            os.makedirs(sig_out, exist_ok=True)
+            with open(sig_out+name+'.txt', 'w') as file:
+                for gene in list(sig):
+                    file.write('{}\n'.format(gene))
+
     exp.tasks_complete.append('Overlaps')
-    print('Overlap analysis complete: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+    print('Overlap analysis complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
                    
     return exp
 
 def final_qc(exp):
     try:
-        print('Beginning final qc: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Beginning final qc: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         
         os.chdir(exp.scratch)
 
-        folder_list=glob.glob(exp.scratch + '/*')
-        folders= " ".join(folder_list)
         command_list = ['module rm python',
                         'source activate RNAseq',
-                        'multiqc {folders}'.format(folders=folders)
+                        'multiqc *'
                        ]
         
         exp.job_id.append(send_job(command_list=command_list, 
@@ -1670,7 +1933,7 @@ def finish(exp):
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment) 
 
-        print('Moved all files into {out}: '.format(out=exp.out_dir) + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
+        print('Moved all files into {}: {}\n'.format(exp.out_dir, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
         print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
 
     except:
@@ -1730,9 +1993,15 @@ def diff_exp(exp):
         if 'Count_Matrix' not in exp.tasks_complete:
             pipe_stage = 'count matrix generation'
             exp = count_matrix(exp)
+        if 'GC' not in exp.tasks_complete:
+            pipe_stage = 'GC Normalization'
+            exp = GC_normalization(exp)
         if 'DESeq2' not in exp.tasks_complete:
             pipe_stage = 'DESeq2'
             exp = DESeq2(exp)
+        if 'PCA' not in exp.tasks_complete:
+            pipe_stage = 'PCA'
+            exp = PCA(exp)
         if 'Sleuth' not in exp.tasks_complete:
             pipe_stage = 'Sleuth'
             exp = Sleuth(exp)
@@ -1748,13 +2017,10 @@ def diff_exp(exp):
         if 'GSEA' not in exp.tasks_complete:
             pipe_stage = 'GSEA'
             exp = GSEA(exp)
-        if 'PCA' not in exp.tasks_complete:
-            pipe_stage = 'PCA'
-            exp = PCA(exp)
         if 'Overlap' not in exp.tasks_complete:
             pipe_stage = 'signature overlaps'
             exp = overlaps(exp)
-        #exp = ICA(exp)  
+        #exp = decomposition(exp)  
         return exp
     except:
         print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
