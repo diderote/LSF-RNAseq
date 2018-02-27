@@ -25,6 +25,7 @@ To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - check if GSEA already done before starting (glob index.html)
+    - if no chrname - skip bigwig generation
 
 Built with python 3
 
