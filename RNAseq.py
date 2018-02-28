@@ -1694,10 +1694,12 @@ def GSEA(exp):
     '''
     Perform Gene Set Enrichment Analysis using gsea 3.0 from the Broad Institute.
     '''
+    import math
+
     out_dir = exp.scratch + 'DESeq2_GSEA'
     os.makedirs(out_dir, exist_ok=True)
 
-    print('Starting GSEA enrichment using list genes ranked by DESeq2 (pvalue/log2FC), reflecting direction intensity and signficance.', file=open(exp.log_file, 'a'))
+    print('Starting GSEA enrichment using list genes ranked by DESeq2 (log2(FoldChange) * -log10(pvalue)), reflecting direction intensity and signficance.', file=open(exp.log_file, 'a'))
 
     if exp.genome == 'mm10':
         mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
@@ -1716,8 +1718,7 @@ def GSEA(exp):
         if exp.genome == 'mm10':
             results['gene_name']=results.gene_name.apply(mouse2human_dict)
 
-        results = results.pvalue.dropna()
-        results['rank'] = results.log2FoldChange/results.pvalue
+        results['rank'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
         results.sort_values(by='rank', ascending=False, inplace=True)
         results.index = results.gene_name
         results = results.rank.dropna()
