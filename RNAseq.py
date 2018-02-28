@@ -1134,6 +1134,8 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         counts = ro.r("counts")
         normCounts=ro.r('normCounts')
         pdata=ro.r('pData')
+        results = ro.r('results')
+        head = ro.r('head')
 
         os.makedirs(plot_dir, exist_ok=True)
 
@@ -1208,6 +1210,9 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1 + compensation"))
             
         #extract results and relabel samples and genes
+        print('{} results type: '.format(comparison), file = open(exp.log_file, 'a'))
+        print(head(results(RUV_dds), 0), file = open(exp.log_file,'a'))
+
         results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds)))
         results.index = RUV_data.name
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
@@ -1238,6 +1243,8 @@ def DESeq2(exp):
     as_df=ro.r("as.data.frame")
     assay=ro.r("assay")
     session=ro.r("sessionInfo")
+    results = ro.r('results')
+    head = ro.r('head')
     
     out_dir= exp.scratch + 'DESeq2_results/'
     os.makedirs(out_dir, exist_ok=True)
@@ -1304,6 +1311,9 @@ def DESeq2(exp):
                 dds[comparison] = deseq.DESeq(dds[comparison])
                 dds[comparison] = deseq.DESeq(dds[comparison], test='LRT', reduced=ro.Formula('~compensation'))
             
+            print('{} results type: '.format(comparison), file = open(exp.log_file, 'a'))
+            print(head(results(dds[comparison]), 0), file = open(exp.log_file,'a'))
+
             exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
             exp.de_results['DE2_' + comparison].index = data.index
             exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
@@ -1687,6 +1697,8 @@ def GSEA(exp):
     out_dir = exp.scratch + 'DESeq2_GSEA'
     os.makedirs(out_dir, exist_ok=True)
 
+    print('Starting GSEA enrichment using list genes ranked by DESeq2 (pvalue/log2FC), reflecting direction intensity and signficance.', file=open(exp.log_file, 'a'))
+
     if exp.genome == 'mm10':
         mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
         mouse2human_dict=mouse2human[1].to_dict()
@@ -1704,9 +1716,11 @@ def GSEA(exp):
         if exp.genome == 'mm10':
             results['gene_name']=results.gene_name.apply(mouse2human_dict)
 
-        results.sort_values(by='stat', ascending=False, inplace=True)
+        results = results.pvalue.dropna()
+        results['rank'] = results.log2FoldChange/results.pvalue
+        results.sort_values(by='rank', ascending=False, inplace=True)
         results.index = results.gene_name
-        results = results.stat.dropna()
+        results = results.rank.dropna()
         results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
 
         os.chdir(out_compare)
