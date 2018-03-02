@@ -363,7 +363,6 @@ def parse_yaml():
                             exp.designs[key]['design'] = "~main_comparison"
                             exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
                                                                         "main_comparison": exp.designs[key]['main_comparison']})
-                            exp.designs[key]['test'] = 'wald'
                          
                     elif E_type == 2:
                         if E1 not in groups or E2 not in groups:
@@ -392,7 +391,6 @@ def parse_yaml():
                             exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
                                                                        "main_comparison": exp.designs[key]['main_comparison'],
                                                                        "compensation": exp.designs[key]['compensation']})
-                            exp.designs[key]['test'] = 'lrt'
                     else:
                         raise ValueError(error)  
 
@@ -1199,29 +1197,33 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         counts_df.columns = RUV_data.drop(columns='name').columns
         plot_PCA(counts = counts_df, colData= colData, out_dir=plot_dir, name='{}_postRUVseq_raw_counts_PCA'.format(comparison))
 
-        #Differential expression (LRT DESeq2) to account for scaled variances between samples
+        #Differential expression (Wald DESeq2) to account for scaled variances between samples
         if design == '~main_comparison':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + main_comparison'))
             RUV_dds = deseq.DESeq(RUV_dds)
-            RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1"))
+        #Differential expression (LRT DESeq2) to account for scaled variances between samples
         elif design == '~compensation + main_comparison':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + compensation + main_comparison'))
             RUV_dds = deseq.DESeq(RUV_dds)
             RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1 + compensation"))
             
         #extract results and relabel samples and genes
-        print('{} results type: '.format(comparison), file = open(exp.log_file, 'a'))
-        print(head(results(RUV_dds), 0), file = open(exp.log_file,'a'))
+        print('{} results type: '.format(comparison), file = open(log, 'a'))
+        print(head(results(RUV_dds), 0), file = open(log,'a'))
 
-        results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds)))
+        results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
         results.index = RUV_data.name
+
+        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
+        lfc.index = RUV_data.name
+
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
         vst.columns = RUV_data.drop(columns='name').columns
         vst.index = RUV_data.name
 
         print('Unwanted variance normalization complete for {comparison} using RUVSeq: {time}'.format(comparison=comparison, time=str(datetime.datetime.now())), file=open(log,'a'))
 
-        return results, vst
+        return results, vst, lfc
 
     except: 
         raise RaiseError('Error during RUVseq.')
@@ -1241,6 +1243,7 @@ def DESeq2(exp):
     
     deseq = importr('DESeq2')
     as_df=ro.r("as.data.frame")
+    as_cv=ro.r('as.character')
     assay=ro.r("assay")
     session=ro.r("sessionInfo")
     results = ro.r('results')
@@ -1302,45 +1305,49 @@ def DESeq2(exp):
         #Differential Expression
         if exp.norm.lower() == 'median-ratios':
             print('Using DESeq2 standard normalization of scaling by median of the ratios of observed counts.', file=open(exp.log_file, 'a'))
-            if designs['design'] == '~main_comparison':
-                print('Performing Wald Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
-                dds[comparison] = deseq.DESeq(dds[comparison])
-
-            elif designs['design'] == '~compensation + main_comparison':
-                print('Performing LRT Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
-                dds[comparison] = deseq.DESeq(dds[comparison])
-                dds[comparison] = deseq.DESeq(dds[comparison], test='LRT', reduced=ro.Formula('~compensation'))
+            
+            print('Performing Wald Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
+            dds[comparison] = deseq.DESeq(dds[comparison])
             
             print('{} results type: '.format(comparison), file = open(exp.log_file, 'a'))
             print(head(results(dds[comparison]), 0), file = open(exp.log_file,'a'))
 
-            exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison])))
+            #get results
+            exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']))))
             exp.de_results['DE2_' + comparison].index = data.index
+            
+            #get shrunken lfc (ashr method)
+            exp.de_results['shunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
+            exp.de_results['shunkenLFC_' + comparison].index = data.index
+
+            #variance stabalized transcript counts (also size scaled)
             exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
             exp.de_results[comparison + '_vst'].columns = data.columns
             exp.de_results[comparison + '_vst'].index = data.index
 
+
+
         elif exp.norm.lower() == 'ercc':
-            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst']  = RUV(RUV_data = data, 
-                                                                                            design=designs['design'], 
-                                                                                            colData=colData, 
-                                                                                            norm_type='ERCC', 
-                                                                                            ERCC_counts = round(exp.spike_counts[designs['all_samples']]), 
-                                                                                            log=exp.log_file,
-                                                                                            comparison=comparison,
-                                                                                            plot_dir = exp.scratch + 'PCA/'
-                                                                                            )
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunken_LFC_' + comparison]  = RUV(RUV_data = data, 
+                                                                                                                                         design=designs['design'], 
+                                                                                                                                         colData=colData, 
+                                                                                                                                         norm_type='ERCC', 
+                                                                                                                                         ERCC_counts = round(exp.spike_counts[designs['all_samples']]), 
+                                                                                                                                         log=exp.log_file,
+                                                                                                                                         comparison=comparison,
+                                                                                                                                         plot_dir = exp.scratch + 'PCA/'
+                                                                                                                                        )
     
         elif exp.norm.lower() == 'empirical':
-            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'] = RUV(RUV_data = data, 
-                                                                                           design=designs['design'], 
-                                                                                           colData=colData, 
-                                                                                           norm_type='empirical', 
-                                                                                           ERCC_counts = None, 
-                                                                                           log=exp.log_file,
-                                                                                           comparison=comparison,
-                                                                                           plot_dir = exp.scratch + 'PCA/'
-                                                                                           )
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunken_LFC_' + comparison] = RUV(RUV_data = data, 
+                                                                                                                                        design=designs['design'], 
+                                                                                                                                        colData=colData, 
+                                                                                                                                        norm_type='empirical', 
+                                                                                                                                        ERCC_counts = None, 
+                                                                                                                                        log=exp.log_file,
+                                                                                                                                        comparison=comparison,
+                                                                                                                                        plot_dir = exp.scratch + 'PCA/'
+                                                                                                                                       )
         else:
             RaiseError('Can only use "median-ratios", "ercc", or "empirical" for normalization of DESeq2.')
 
@@ -1353,6 +1360,16 @@ def DESeq2(exp):
                                                    index=True, 
                                                    sep="\t"
                                                   )
+        ##Shrunken LFC using ashr method
+        exp.de_results['shrunken_LFC_' + comparison].sort_values(by='log2FoldChange', ascending=False, inplace=True)
+        exp.de_results['shrunken_LFC_' + comparison]['gene_name']=exp.de_results['shrunken_LFC_' + comparison].index
+        exp.de_results['shrunken_LFC_' + comparison]['gene_name']=exp.de_results['shrunken_LFC_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
+        exp.de_results['shrunken_LFC_' + comparison].to_csv(out_dir + comparison + '-DESeq2-shrunken-LFC.txt', 
+                                                           header=True, 
+                                                           index=True, 
+                                                           sep="\t"
+                                                          )
+
         #Variance Stabilized log2 expected counts.
         exp.de_results[comparison + '_vst'].to_csv(out_dir + comparison + '-VST-counts.txt', 
                                                    header=True, 
@@ -1699,11 +1716,7 @@ def GSEA(exp):
     out_dir = exp.scratch + 'DESeq2_GSEA'
     os.makedirs(out_dir, exist_ok=True)
 
-    print('Starting GSEA enrichment using list genes ranked by DESeq2 (log2(FoldChange) * -log10(pvalue)), reflecting direction intensity and signficance.', file=open(exp.log_file, 'a'))
-
-    if exp.genome == 'mm10':
-        mouse2human = pd.read_csv('/projects/ctsi/nimerlab/DANIEL/tools/genomes/genome_conversion/Mouse2Human_Genes.txt', header=None, index_col=0, sep="\t")
-        mouse2human_dict=mouse2human[1].to_dict()
+    print('Starting GSEA enrichment.', file=open(exp.log_file, 'a'))
 
     for comparison,design in exp.designs.items():
         #check if comparison already done.
@@ -1714,19 +1727,40 @@ def GSEA(exp):
 
         results=exp.de_results['DE2_' + comparison]
 
-        #convert to human homolog if mouse
-        if exp.genome == 'mm10':
-            results['gene_name']=results.gene_name.apply(mouse2human_dict)
-
-        results['rank'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
-        results.sort_values(by='rank', ascending=False, inplace=True)
+        #generating ranked list based on log2foldchange and pvalue
+        results['ranked'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
+        results.sort_values(by='ranked', ascending=False, inplace=True)
         results.index = results.gene_name
-        results = results.rank.dropna()
-        results.to_csv('{out_compare}/{comparison}.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+        ranked = results.ranked.dropna()
+        ranked.to_csv('{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+
+        #generate ranked list based on ashr shrunken log2foldchange
+        lfc = exp.de_results['shrunken_LFC_' + comparison]
+        lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
+        lfc.index = lfc.gene_name
+        lfc = lfc.log2FoldChange.dropna()
+        lfc.to_csv('{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+
+     	#double check this is the wald statistic before using for ranking
+        if (design['design'] == '~compensation + main_comparison') and (exp.norm.lower() != 'median-ratios'):
+            print('Ranking by log2(FoldChange) * -log10(pvalue) reflecting direction, magnitude and significance per gene.', file=open(exp.log_file,'a'))
+            rnk = '{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison)
+            rnk_name = 'LFC-L10P'
+
+        else:
+            print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
+        	results.sort_values(by='ranked', ascending=False, inplace=True)
+        	results = results.stat.dropna()
+        	ranked.to_csv('{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+            rnk = '{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison)
+            rnk_name = 'wald'
+
+        rnk2 = '{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison)
 
         os.chdir(out_compare)
 
-        print('Beginning GSEA enrichment for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning GSEA enrichment for {} using preranked genes: {}'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Genes with positive LFC (to the left left in GSEA output graph) are upregulated in experimental vs control conditions. Genes with negative LFC (on right) are downregulated genes in experimental samples vs controls.\n', file=open(exp.log_file,'a'))
 
         gmts={'h.all': 'Hallmarks',
               'c2.cp.kegg': 'KEGG',
@@ -1740,7 +1774,8 @@ def GSEA(exp):
 
             command_list = ['module rm python java perl',
                             'source activate RNAseq',
-                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {comparison}.rnk -scoring_scheme weighted -rpt_label {comparison}_{gset} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name)
+                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_{rnk_name} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk,rnk_name=rnk_name)
+                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
                            ]
 
             exp.job_id.append(send_job(command_list=command_list, 
@@ -1768,7 +1803,7 @@ def GSEA(exp):
 
     os.chdir(exp.scratch)
     exp.tasks_complete.append('GSEA')
-    print('GSEA using DESeq2 stat preranked genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('GSEA analysis complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
     
     return exp
 
