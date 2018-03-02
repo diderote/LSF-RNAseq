@@ -817,6 +817,7 @@ def spike(exp):
                 plt.title("ERCC Mix 1 Counts per Sample")
                 sns.despine()
                 M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
+                plt.close(M1)
 
                 sns.set(context='paper', font_scale=2, style='white')
                 M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
@@ -825,6 +826,7 @@ def spike(exp):
                 plt.title("ERCC Mix 2 Counts per Sample")
                 sns.despine()
                 M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
+                plt.close(M2)
 
             else:
                 print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
@@ -1057,6 +1059,7 @@ def plot_PCA(counts, colData, out_dir, name):
         
         ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
         ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
+        plt.close()
     except:
         raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
 
@@ -1556,6 +1559,7 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     plt.tight_layout()
     plt.savefig('{}/{}-Volcano-Plot.png'.format(out_dir,name), dpi=200)
     plt.savefig('{}/{}-Volcano-Plot.svg'.format(out_dir,name), dpi=200)
+    plt.close()
 
     return
 
@@ -1744,14 +1748,14 @@ def GSEA(exp):
         #double check this is the wald statistic before using for ranking
         if (design['design'] == '~compensation + main_comparison') and (exp.norm.lower() != 'median-ratios'):
             print('Ranking by log2(FoldChange) * -log10(pvalue) reflecting direction, magnitude and significance per gene.', file=open(exp.log_file,'a'))
-            rnk = '{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison)
+            rnk = '{}_LFC-L10P.rnk'.format(comparison)
             rnk_name = 'LFC-L10P'
         else:
             print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
             results.sort_values(by='ranked', ascending=False, inplace=True)
             results = results.stat.dropna()
             ranked.to_csv('{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
-            rnk = '{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison)
+            rnk = '{}_stat.rnk'.format(comparison)
             rnk_name = 'wald'
 
         rnk2 = '{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison)
@@ -1847,6 +1851,7 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     plt.tight_layout()
     plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".svg", dpi=200)
     plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".png", dpi=200)
+    plt.close()
 
 def overlaps(exp):
     '''
