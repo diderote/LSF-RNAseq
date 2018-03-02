@@ -1758,7 +1758,7 @@ def GSEA(exp):
             rnk = '{}_stat.rnk'.format(comparison)
             rnk_name = 'wald'
 
-        rnk2 = '{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison)
+        rnk2 = '{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison)
 
         os.chdir(out_compare)
 
