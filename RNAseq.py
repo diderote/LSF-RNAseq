@@ -1741,17 +1741,16 @@ def GSEA(exp):
         lfc = lfc.log2FoldChange.dropna()
         lfc.to_csv('{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
 
-     	#double check this is the wald statistic before using for ranking
+        #double check this is the wald statistic before using for ranking
         if (design['design'] == '~compensation + main_comparison') and (exp.norm.lower() != 'median-ratios'):
             print('Ranking by log2(FoldChange) * -log10(pvalue) reflecting direction, magnitude and significance per gene.', file=open(exp.log_file,'a'))
             rnk = '{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison)
             rnk_name = 'LFC-L10P'
-
         else:
             print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
-        	results.sort_values(by='ranked', ascending=False, inplace=True)
-        	results = results.stat.dropna()
-        	ranked.to_csv('{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+            results.sort_values(by='ranked', ascending=False, inplace=True)
+            results = results.stat.dropna()
+            ranked.to_csv('{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
             rnk = '{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison)
             rnk_name = 'wald'
 
@@ -1774,7 +1773,7 @@ def GSEA(exp):
 
             command_list = ['module rm python java perl',
                             'source activate RNAseq',
-                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_{rnk_name} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk,rnk_name=rnk_name)
+                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_{rnk_name} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk,rnk_name=rnk_name),
                             'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
                            ]
 
