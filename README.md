@@ -10,13 +10,13 @@ This pipline handles processing and analyses for RNAseq data on the University o
 6. Generation of scaled (reads per million) bigwig files from transcriptome alignment
 7. Optional within-sample GC normalization.
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
-9. Differential expression using DESeq2 (Wald if simple design, LRT if complex design)
+9. Differential expression using DESeq2
 10. PCA plots of all and experimental samples, raw and normalized counts
 11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2 & 1.5 FC) with Sleuth (Kallisto) q<0.05 DE genes 
 12. Volcano plots generated from DESeq2 results and 2FC and 1.5FC signifcant genes
 13. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
 14. GO and KEGG enrichment of DE genes
-15. GSEA from test statistic ranked gene lists from DESeq2
+15. GSEA using ranked gene lists from DESeq2
 16. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output and GO enrichment.
 
 Option Details:
