@@ -154,8 +154,8 @@ def parse_yaml():
         print('Reading experimental file...', file=open(exp.log_file, 'a'))
 
         #Genome
-        if yml['Genome'].lower() not in ['hg38', 'mm10']:
-            raise ValueError("Genome must be either hg38 or mm10.")
+        if yml['Genome'].lower() not in ['hg38', 'mm10', 'hg19']:
+            raise ValueError("Genome must be either hg38, hg19, or mm10.")
         else:
             exp.genome = yml['Genome'].lower()
             print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
@@ -200,6 +200,10 @@ def parse_yaml():
                     exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
                     exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
                     exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
+                elif exp.genome == 'hg19':
+                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
+                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
+                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
         else:
             raise IOError('Please specify whether or not to perform alignment.', file=open(exp.file_log, 'a'))   
         
@@ -215,6 +219,8 @@ def parse_yaml():
             if exp.genome == 'mm10':
                 exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/mm10_GC_Content.txt'
             elif exp.genome == 'hg38':
+                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
+            elif exp.genome == 'hg19':
                 exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
         elif yml['Lab'].lower() == 'other':
             exp.genome_indicies['ERCC_Mix'] = yml['ERCC_Mix_file']
@@ -266,8 +272,8 @@ def parse_yaml():
                 exp.project = '-P ' + yml['Pegasus_Project']
         
         #Counts
-        if not 0 < yml['Total_sample_number'] < 19:
-            raise ValueError("This pipeline is only set up to handle up to 18 samples.")
+        if not 0 < yml['Total_sample_number'] < 21:
+            raise ValueError("This pipeline is only set up to handle up to 20 samples.")
         else:
             exp.sample_number = yml['Total_sample_number']
             print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
@@ -1499,8 +1505,10 @@ def Sleuth(exp):
             mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
         elif exp.genome == 'hg38':
             mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
+        elif exp.genome == 'hg19':
+            mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
         else:
-           raise RaiseError('Error in sleuth, pipeline only handles hg38 and mm10')
+           raise RaiseError('Error in sleuth, pipeline only handles hg38,hg19, and mm10')
 
         t2g = biomart.getBM(attributes = ro.StrVector(("ensembl_transcript_id_version", "ensembl_gene_id","external_gene_name")), mart=mart)
         t2g = dplyr.rename(t2g, target_id = 'ensembl_transcript_id_version', ens_gene = 'ensembl_gene_id', ext_gene = 'external_gene_name')
@@ -1584,11 +1592,15 @@ def sigs(exp):
             DE2_2DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -1)].gene_name.tolist())
             DE2_15UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > .585)].gene_name.tolist())
             DE2_15DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -.585)].gene_name.tolist())
+            DE2_UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > 0)].gene_name.tolist())
+            DE2_DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < 0)].gene_name.tolist())
 
             exp.sig_lists[comparison]['2FC_UP'] = DE2_2UP & SL_sig
             exp.sig_lists[comparison]['2FC_DN'] = DE2_2DN & SL_sig
             exp.sig_lists[comparison]['15FC_UP'] = DE2_15UP & SL_sig
             exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN & SL_sig
+            exp.sig_lists[comparison]['All_UP'] = DE2_UP & SL_sig
+            exp.sig_lists[comparison]['All_DN'] = DE2_DN & SL_sig
 
         else:
             print('Only using significant genes called from STAR/RSEM/DESeq2 for {comparison} analyses.'.format(comparison=comparison), file=open(exp.log_file, 'a'))
@@ -1601,11 +1613,15 @@ def sigs(exp):
             DE2_2DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -1)].gene_name.tolist())
             DE2_15UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > .585)].gene_name.tolist())
             DE2_15DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < -.585)].gene_name.tolist())
+            DE2_UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > 0)].gene_name.tolist())
+            DE2_DN = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange < 0)].gene_name.tolist())
 
             exp.sig_lists[comparison]['2FC_UP'] = DE2_2UP
             exp.sig_lists[comparison]['2FC_DN'] = DE2_2DN
             exp.sig_lists[comparison]['15FC_UP'] = DE2_15UP
             exp.sig_lists[comparison]['15FC_DN'] = DE2_15DN
+            exp.sig_lists[comparison]['All_UP'] = DE2_UP
+            exp.sig_lists[comparison]['All_DN'] = DE2_DN
 
         #volcano_plot    
         volcano_out = out_dir + comparison + "/"
@@ -1614,6 +1630,7 @@ def sigs(exp):
         print('Generating Volcano Plots using DESeq2 results for significance', file=open(exp.log_file, 'a'))
         volcano(results = DE_results, sig_up=DE2_2UP, sig_down=DE2_2DN, name='{}_2_FC'.format(comparison), out_dir=volcano_out)
         volcano(results = DE_results, sig_up=DE2_15UP, sig_down=DE2_15DN, name='{}_1.5_FC'.format(comparison), out_dir=volcano_out)
+        volcano(results = DE_results, sig_up=DE2_UP, sig_down=DE2_DN, name='{}_noFC_filter'.format(comparison), out_dir=volcano_out)
 
     for comparison, sigs in exp.sig_lists.items():
         sig_out=out_dir + comparison + '/'
@@ -1648,16 +1665,24 @@ def clustermap(exp):
             print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
-            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
 
         sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
         if len(sig15) == 0:
             print('There are no significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
-            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=200)
-            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=200)
+            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+
+        sigAll = list(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
+        if len(sigAll) == 0:
+            print('There are no significantly differentially expressed genes without a fold change in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+        else:
+            CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sigAll)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
+            CM15.savefig('{out_dir}{comparison}_noFCfilter_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM15.savefig('{out_dir}{comparison}_noFCfilter_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
     
     exp.tasks_complete.append('Heatmaps')
     print('Heatmaps for DESeq2 differentially expressed genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
@@ -1861,7 +1886,7 @@ def overlaps(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     if len(exp.overlaps) != 0:
-        names=['2FC_UP', '2FC_DN', '15FC_UP','15FC_DN']
+        names=['2FC_UP', '2FC_DN', '15FC_UP','15FC_DN', 'All_UP', 'All_DN']
         print('Beginning overlap of significant genes: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
 
         for overlap,comparison_list in exp.overlaps.items():

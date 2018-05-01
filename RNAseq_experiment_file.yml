@@ -2,7 +2,7 @@
 Name: 'Experiment_Name' #Experiment name
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
 #### Experimental Setup ####
-Total_sample_number: 12 #Total number (max 18)
+Total_sample_number: 12 #Total number (max 20)
 Samples:   
   1: 'Name' #Sample1
   2: 'Name' #Sample2
@@ -22,9 +22,11 @@ Samples:
   16: 'Name' #Sample16
   17: 'Name' #Sample17
   18: 'Name' #Sample18
+  19: 'Name' #Sample19
+  20: 'Name' #Sample20
 #### Alignment Options ####
 ERCC_spike: # yes if ERCC spike-ins used.
-Genome: #hg38 or mm10
+Genome: #hg38, hg19 or mm10
 Fastq_directory: /path/to/fastq/
 Hard_trim: 2,4 #Hard clips 2 bp of the front of each R1 and R2 and 4 bp off the end.
 #### Differential Expression Options ####
