@@ -2,7 +2,7 @@
 # coding: utf-8
 
 '''
-Nimerlab RNASeq Pipeline v0.4
+Nimerlab RNASeq Pipeline v0.5
 
 Copyright © 2018 Daniel L. Karl
 
@@ -18,7 +18,7 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Reads an experimetnal design yaml file (Version 0.4).
+Reads an experimetnal design yaml file (Version 0.5).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
@@ -46,7 +46,8 @@ class Experiment(object):
                   spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
                   job_id=[],de_groups={},norm='Median-Ratios',designs={}, overlaps={}, gene_lists={},
                   tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
-                  genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame()
+                  genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame(),
+                  seq_type=''
                  ):
         self.scratch = scratch
         self.date = date
@@ -78,6 +79,7 @@ class Experiment(object):
         self.project=project
         self.gc_norm=gc_norm
         self.gc_count_matrix = gc_count_matrix
+        self.seq_type=seq_type
 
 class RaiseError(Exception):
     pass
@@ -160,11 +162,21 @@ def parse_yaml():
             exp.genome = yml['Genome'].lower()
             print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
+        #Sequencing type
+        if yml['Sequencing_type'].lower() not in ['paired','single']:
+            raise ValueError("Must specify whether sequence is paired or single end.")
+        else:
+            exp.seq_type = yml['Sequencing_type'].lower()
+            if exp.seq_type == 'single':
+                exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
+            print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
+
         #Set temp
         if yml['Lab'].lower() == 'nimer':
             set_temp='/scratch/projects/nimerlab/tmp'
         else:
-            set_temp='/scratch'
+            set_temp=exp.scratch + '.tmp/'
+            os.makedirs(set_temp, exist_ok=True)
         sub.run('export TMPDIR=' + set_temp, shell=True)
         print('TMP directory set to ' + set_temp, file=open(exp.log_file, 'a'))
 
@@ -272,8 +284,8 @@ def parse_yaml():
                 exp.project = '-P ' + yml['Pegasus_Project']
         
         #Counts
-        if not 0 < yml['Total_sample_number'] < 21:
-            raise ValueError("This pipeline is only set up to handle up to 20 samples.")
+        if not 0 < yml['Total_sample_number'] < 33:
+            raise ValueError("This pipeline is only set up to handle up to 32 samples.")
         else:
             exp.sample_number = yml['Total_sample_number']
             print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
@@ -614,12 +626,17 @@ def fastq_screen(exp):
     #change to experimental directory in scratch
     os.chdir(exp.fastq_folder)
     
+    if exp.seq_type == 'paired':
+        fastq_end = '_R1.fastq.gz'
+    elif exp.seq_type == 'single':
+        fastq_end = '.fastq.gz'
+
     #Submit fastqc and fastq_screen jobs for each sample
     for number,sample in exp.samples.items():
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
-                        'fastq_screen --aligner bowtie2 ' + exp.fastq_folder + sample + '_R1.fastq.gz'
+                        'fastq_screen --aligner bowtie2 ' + exp.fastq_folder + sample + fastq_end
                        ]
 
         exp.job_id.append(send_job(command_list=command_list, 
@@ -665,15 +682,24 @@ def trim(exp):
         #Submit trimming files for each sample
         for number,sample in exp.samples.items():
 
-            if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) in glob.glob(exp.fastq_folder + '*.gz'):
-                pass
-
-            else:
+            move_on = True
+            if exp.seq_type == 'paired':
+                if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) in glob.glob(exp.fastq_folder + '*.gz'):
+                    move_on = False
+            elif exp.seq_type == 'single':
+                if '{loc}{sample}_trim.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) in glob.glob(exp.fastq_folder + '*.gz'):
+                    move_on = False
+            
+            if move_on:
                 print('\nTrimming {sample}: '.format(sample=sample), file=open(exp.log_file, 'a'))
-                trim_u=str(exp.trim[0])
-                trim_U=str(exp.trim[1])
 
-                cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u {trim_u} -u -{trim_u} -U {trim_U} -U -{trim_U} -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample,trim_u=trim_u,trim_U=trim_U)
+                if exp.seq_type == 'paired':
+                    trim_u=str(exp.trim[0])
+                    trim_U=str(exp.trim[1])
+                    cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u {trim_u} -u -{trim_u} -U {trim_U} -U -{trim_U} -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample,trim_u=trim_u,trim_U=trim_U)
+                elif exp.seq_type == 'single':
+                    cutadapt = 'cutadapt -a AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -m 18 -o {loc}{sample}_trim.fastq.gz {loc}{sample}.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample)
+                
                 command_list = ['module rm python',
                                 'module rm perl',
                                 'source activate RNAseq',
@@ -699,8 +725,12 @@ def trim(exp):
     print('\nTrimming logs are found in stdout files from bsub.  Cutadapt does not handle log files in multi-core mode.', file=open(exp.log_file, 'a'))
 
     for number,sample in exp.samples.items():
-        if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) not in glob.glob(exp.fastq_folder + '*.gz'):
-            raise RaiseError('Not all samples were trimmed.')
+        if exp.seq_type == 'paired':
+            if '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) not in glob.glob(exp.fastq_folder + '*.gz'):
+                raise RaiseError('Not all samples were trimmed.')
+        elif exp.seq_type == 'single':
+            if '{loc}{sample}_trim.fastq.gz'.format(loc=exp.fastq_folder,sample=sample) not in glob.glob(exp.fastq_folder + '*.gz'):
+                raise RaiseError('Not all samples were trimmed.')
 
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
@@ -731,7 +761,10 @@ def spike(exp):
                     #Submit STAR alingment for spike-ins for each sample
                     print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                    spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {floc}{sample}_trim_R1.fastq.gz {floc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
+                    if exp.seq_type == 'paired':
+                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {floc}{sample}_trim_R1.fastq.gz {floc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
+                    elif exp.seq_type == 'single':
+                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {floc}{sample}_trim.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
 
                     command_list = ['module rm python',
                                     'module rm perl',
@@ -823,7 +856,7 @@ def spike(exp):
                 plt.title("ERCC Mix 1 Counts per Sample")
                 sns.despine()
                 M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
-                plt.close(M1)
+                plt.close()
 
                 sns.set(context='paper', font_scale=2, style='white')
                 M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
@@ -832,7 +865,7 @@ def spike(exp):
                 plt.title("ERCC Mix 2 Counts per Sample")
                 sns.despine()
                 M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
-                plt.close(M2)
+                plt.close()
 
             else:
                 print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
@@ -877,7 +910,11 @@ def rsem(exp):
             else:
                 print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-                align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+                if exp.seq_type == 'paired':
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+                elif exp.seq_type == 'single':
+                    align= 'rsem-calculate-expression --star --star-gzipped-read-file --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+
                 plot_model='rsem-plot-model {sample} {sample}.models.pdf' .format(sample=sample)  
                 genome=exp.genome_indicies['chrLen']
                 
@@ -932,6 +969,7 @@ def kallisto(exp):
     Second/alternate alignment to transcriptome using kallisto
     '''
     #make Kallisto_results folder
+
     os.makedirs(exp.scratch + 'Kallisto_results/', exist_ok=True)
 
     scan = 0
@@ -949,7 +987,10 @@ def kallisto(exp):
                 pass 
             
             else:   
-                align = 'kallisto quant --index={index} --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(index=exp.genome_indicies['Kallisto'],out=kal_out,loc=exp.fastq_folder,sample=sample)
+                
+                if exp.seq_type == 'paired':
+                    align = 'kallisto quant --index={index} --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(index=exp.genome_indicies['Kallisto'],out=kal_out,loc=exp.fastq_folder,sample=sample)
+
                 print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
                 command_list = ['module rm python',
@@ -1223,7 +1264,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
         results.index = RUV_data.name
 
-        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
+        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='apeglm')))
         lfc.index = RUV_data.name
 
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
@@ -1325,9 +1366,9 @@ def DESeq2(exp):
             exp.de_results['DE2_' + comparison] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']))))
             exp.de_results['DE2_' + comparison].index = data.index
             
-            #get shrunken lfc (ashr method)
-            exp.de_results['shunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
-            exp.de_results['shunkenLFC_' + comparison].index = data.index
+            #get shrunken lfc (apeglm) method)
+            exp.de_results['shrunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']), type='apeglm')))
+            exp.de_results['shrunkenLFC_' + comparison].index = data.index
 
             #variance stabalized transcript counts (also size scaled)
             exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
@@ -1337,7 +1378,7 @@ def DESeq2(exp):
 
 
         elif exp.norm.lower() == 'ercc':
-            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunken_LFC_' + comparison]  = RUV(RUV_data = data, 
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunkenLFC_' + comparison]  = RUV(RUV_data = data, 
                                                                                                                                          design=designs['design'], 
                                                                                                                                          colData=colData, 
                                                                                                                                          norm_type='ERCC', 
@@ -1348,7 +1389,7 @@ def DESeq2(exp):
                                                                                                                                         )
     
         elif exp.norm.lower() == 'empirical':
-            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunken_LFC_' + comparison] = RUV(RUV_data = data, 
+            exp.de_results['DE2_' + comparison], exp.de_results[comparison + '_vst'], exp.de_results['shrunkenLFC_' + comparison] = RUV(RUV_data = data, 
                                                                                                                                         design=designs['design'], 
                                                                                                                                         colData=colData, 
                                                                                                                                         norm_type='empirical', 
@@ -1369,11 +1410,11 @@ def DESeq2(exp):
                                                    index=True, 
                                                    sep="\t"
                                                   )
-        ##Shrunken LFC using ashr method
-        exp.de_results['shrunken_LFC_' + comparison].sort_values(by='log2FoldChange', ascending=False, inplace=True)
-        exp.de_results['shrunken_LFC_' + comparison]['gene_name']=exp.de_results['shrunken_LFC_' + comparison].index
-        exp.de_results['shrunken_LFC_' + comparison]['gene_name']=exp.de_results['shrunken_LFC_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
-        exp.de_results['shrunken_LFC_' + comparison].to_csv(out_dir + comparison + '-DESeq2-shrunken-LFC.txt', 
+        ##Shrunken LFC using apeglm method
+        exp.de_results['shrunkenLFC_' + comparison].sort_values(by='log2FoldChange', ascending=False, inplace=True)
+        exp.de_results['shrunkenLFC_' + comparison]['gene_name']=exp.de_results['shrunkenLFC_' + comparison].index
+        exp.de_results['shrunkenLFC_' + comparison]['gene_name']=exp.de_results['shrunkenLFC_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
+        exp.de_results['shrunkenLFC_' + comparison].to_csv(out_dir + comparison + '-DESeq2-shrunken-LFC.txt', 
                                                            header=True, 
                                                            index=True, 
                                                            sep="\t"
@@ -1754,7 +1795,7 @@ def GSEA(exp):
         out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
         os.makedirs(out_compare, exist_ok=True)
 
-        results=exp.de_results['DE2_' + comparison]
+        results=exp.de_results['DE2_' + comparison].dropna()
 
         #generating ranked list based on log2foldchange and pvalue
         results['ranked'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
@@ -1763,8 +1804,8 @@ def GSEA(exp):
         ranked = results.ranked.dropna()
         ranked.to_csv('{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
 
-        #generate ranked list based on ashr shrunken log2foldchange
-        lfc = exp.de_results['shrunken_LFC_' + comparison]
+        #generate ranked list based on apeglm shrunken log2foldchange
+        lfc = exp.de_results['shrunkenLFC_' + comparison].dropna()
         lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
         lfc.index = lfc.gene_name
         lfc = lfc.log2FoldChange.dropna()
@@ -1983,15 +2024,24 @@ def finish(exp):
 
         os.chdir(exp.scratch)
         
-        for number,sample in exp.samples.items():
-            R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                      '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                      '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                      '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
-                     ]
-            for R in R_list:
-                if os.path.isfile(R):
-                    os.remove(R)
+        if exp.seq_type == 'paired':
+            for number,sample in exp.samples.items():
+                R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
+                         ]
+                for R in R_list:
+                    if os.path.isfile(R):
+                        os.remove(R)
+        elif exp.seq_type == 'single':
+            for number,sample in exp.samples.items():
+                R_list = ['{loc}{sample}.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
+                          '{loc}{sample}_trim.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)                          
+                         ]
+                for R in R_list:
+                    if os.path.isfile(R):
+                        os.remove(R)
         
         print('\nPackage versions: ', file=open(exp.log_file, 'a'))
         with open('/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml','r') as file:

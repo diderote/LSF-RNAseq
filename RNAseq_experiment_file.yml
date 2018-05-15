@@ -2,33 +2,45 @@
 Name: 'Experiment_Name' #Experiment name
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
 #### Experimental Setup ####
-Total_sample_number: 12 #Total number (max 20)
+Total_sample_number: 12 #Total number (max 22)
 Samples:   
   1: 'Name' #Sample1
   2: 'Name' #Sample2
-  3: 'Name' #Sample3
-  4: 'Name' #Sample4
-  5: 'Name' #Sample5
-  6: 'Name' #Sample6
-  7: 'Name' #Sample7
-  8: 'Name' #Sample8
-  9: 'Name' #Sample9
-  10: 'Name' #Sample10
-  11: 'Name' #Sample11
-  12: 'Name' #Sample12
-  13: 'Name' #Sample13
-  14: 'Name' #Sample14
-  15: 'Name' #Sample15
-  16: 'Name' #Sample16
-  17: 'Name' #Sample17
-  18: 'Name' #Sample18
-  19: 'Name' #Sample19
-  20: 'Name' #Sample20
+  3: 'Name' #
+  4: 'Name' #
+  5: 'Name' #
+  6: 'Name' #
+  7: 'Name' #
+  8: 'Name' #
+  9: 'Name' #
+  10: 'Name' #
+  11: 'Name' #
+  12: 'Name' #
+  13: 'Name' #
+  14: 'Name' #
+  15: 'Name' #
+  16: 'Name' #
+  17: 'Name' #
+  18: 'Name' #
+  19: 'Name' #
+  20: 'Name' #
+  21: 'Name' #
+  22: 'Name' #
+  23: 'Name' #
+  24: 'Name' #
+  25: 'Name' #
+  26: 'Name' #
+  27: 'Name' #
+  28: 'Name' #
+  29: 'Name' #
+  30: 'Name' #
+  31: 'Name' #
+  32: 'Name' #
 #### Alignment Options ####
 ERCC_spike: # yes if ERCC spike-ins used.
 Genome: #hg38, hg19 or mm10
 Fastq_directory: /path/to/fastq/
-Hard_trim: 2,4 #Hard clips 2 bp of the front of each R1 and R2 and 4 bp off the end.
+Sequencing_type: paired #'paired' or 'single' 
 #### Differential Expression Options ####
 Groups:
   Exp_1: 1,2,3,4 #Sample numbers in Exp Group 1

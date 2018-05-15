@@ -6,11 +6,11 @@ This pipline handles processing and analyses for RNAseq data on the University o
 2. Fastq quality measurements
 3. Adapter and quality fastq trimming
 4. Spike-in assessment (if applicable)
-5. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto
+5. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto (not for single-end)
 6. Generation of scaled (reads per million) bigwig files from transcriptome alignment
 7. Optional within-sample GC normalization.
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
-9. Differential expression using DESeq2 (both unshunken LFC and ashr shrunken LFC are reported)
+9. Differential expression using DESeq2 (both unshunken LFC and apeglm shrunken LFC are reported)
 10. PCA plots of all and experimental samples, raw and normalized counts
 11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
 12. Volcano plots generated from DESeq2 results with signifcant genes
@@ -21,13 +21,13 @@ This pipline handles processing and analyses for RNAseq data on the University o
 
 Option Details:
 * ERCC_spike: align reads to spike index using STAR
-* Hard_trim: specify the nubmer of bp to be hard clipped off 5' or 3' end of the read before adapter trimming.
 * Normalization: 
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. 
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).
 	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation).
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
 * GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour for CG content file generatation.
+* Sequencing_type: paired or single end sequencing.
 
 Other options:
 *  Count_matrix: if not aligning, path to a file containing gene names as rows(first column), sample names as columns(top row), and gene counts in cells.
@@ -70,6 +70,8 @@ All submission scripts, error and output files are saved.
 8. From your run folder, run analysis with this command (replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
 	
 > bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
+
+* add -P <project> above if you are on more than one project.
 
 9. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.
 
