@@ -1264,7 +1264,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
         results.index = RUV_data.name
 
-        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='apeglm')))
+        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
         lfc.index = RUV_data.name
 
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
@@ -1367,7 +1367,7 @@ def DESeq2(exp):
             exp.de_results['DE2_' + comparison].index = data.index
             
             #get shrunken lfc (apeglm) method)
-            exp.de_results['shrunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']), type='apeglm')))
+            exp.de_results['shrunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
             exp.de_results['shrunkenLFC_' + comparison].index = data.index
 
             #variance stabalized transcript counts (also size scaled)

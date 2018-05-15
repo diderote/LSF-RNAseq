@@ -57,6 +57,8 @@ All submission scripts, error and output files are saved.
 > module rm python
 > conda env create -f /projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml
 
+ - If this env throws errors, check that miniconda is installed in $HOME/miniconda3/ or change the bottom of the environment.yml file as needed.  If there is a package error, try removing the version of that package from the .yml file and trying again.
+
 4. OPTIONAL SETUP:
 	- For use of contamination screen (fastq screen):
 		- generate the relevant bowtie2 indices and add the path were indicated in options_files/fastq_screen.conf. (many premade by illumina at https://support.illumina.com/sequencing/sequencing_software/igenome.html)
