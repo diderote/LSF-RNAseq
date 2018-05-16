@@ -1264,7 +1264,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
         results.index = RUV_data.name
 
-        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
+        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
         lfc.index = RUV_data.name
 
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
