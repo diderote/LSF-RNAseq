@@ -1264,8 +1264,9 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
         results.index = RUV_data.name
 
-        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
+        lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
         lfc.index = RUV_data.name
+        print('Switched to ashr method for lfcShrinkage for {}.'format(comparison), file=open(log,'a'))
 
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
         vst.columns = RUV_data.drop(columns='name').columns
@@ -1369,6 +1370,7 @@ def DESeq2(exp):
             #get shrunken lfc (apeglm) method)
             exp.de_results['shrunkenLFC_' + comparison] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
             exp.de_results['shrunkenLFC_' + comparison].index = data.index
+            print('Using apeglm method for lfc shrinkage for {}.'.format(comparison), file=open(exp.log_file, 'a'))
 
             #variance stabalized transcript counts (also size scaled)
             exp.de_results[comparison + '_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(dds[comparison])))
@@ -1410,7 +1412,7 @@ def DESeq2(exp):
                                                    index=True, 
                                                    sep="\t"
                                                   )
-        ##Shrunken LFC using apeglm method
+        ##Shrunken LFC using apeglm or ashr method
         exp.de_results['shrunkenLFC_' + comparison].sort_values(by='log2FoldChange', ascending=False, inplace=True)
         exp.de_results['shrunkenLFC_' + comparison]['gene_name']=exp.de_results['shrunkenLFC_' + comparison].index
         exp.de_results['shrunkenLFC_' + comparison]['gene_name']=exp.de_results['shrunkenLFC_' + comparison].gene_name.apply(lambda x: x.split("_")[1])
@@ -1804,7 +1806,7 @@ def GSEA(exp):
         ranked = results.ranked.dropna()
         ranked.to_csv('{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
 
-        #generate ranked list based on apeglm shrunken log2foldchange
+        #generate ranked list based on shrunken log2foldchange
         lfc = exp.de_results['shrunkenLFC_' + comparison].dropna()
         lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
         lfc.index = lfc.gene_name

@@ -10,7 +10,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 6. Generation of scaled (reads per million) bigwig files from transcriptome alignment
 7. Optional within-sample GC normalization.
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
-9. Differential expression using DESeq2 (both unshunken LFC and apeglm shrunken LFC are reported)
+9. Differential expression using DESeq2 (both unshunken LFC and apeglm or ashr shrunken LFC are reported)
 10. PCA plots of all and experimental samples, raw and normalized counts
 11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
 12. Volcano plots generated from DESeq2 results with signifcant genes
@@ -20,11 +20,11 @@ This pipline handles processing and analyses for RNAseq data on the University o
 16. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output and GO enrichment.
 
 Option Details:
-* ERCC_spike: align reads to spike index using STAR
+* ERCC_spike: align reads to spike index using STAR.
 * Normalization: 
-	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. 
-	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).
-	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation).
+	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
+	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
+	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation). Also reports ashr lfc shrunken values.
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
 * GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour for CG content file generatation.
 * Sequencing_type: paired or single end sequencing.
