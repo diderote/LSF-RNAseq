@@ -1266,7 +1266,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
 
         lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
         lfc.index = RUV_data.name
-        print('Switched to ashr method for lfcShrinkage for {}.'format(comparison), file=open(log,'a'))
+        print('Switched to ashr method for lfcShrinkage for {}.'.format(comparison), file=open(log,'a'))
 
         vst = pandas2ri.ri2py_dataframe(assay(deseq.varianceStabilizingTransformation(RUV_dds)))
         vst.columns = RUV_data.drop(columns='name').columns
