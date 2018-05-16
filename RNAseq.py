@@ -182,7 +182,7 @@ def parse_yaml():
 
         #Tasks to complete
         if yml['Tasks']['Align'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','Spike','RSEM','Kallisto','Count_Matrix', 'Sleuth']
+            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','RSEM','Kallisto','Count_Matrix', 'Sleuth']
             print('Not performing alignment.', file=open(exp.log_file,'a'))
             count_matrix_loc=yml['Count_matrix']
             if os.path.exists(count_matrix_loc):
@@ -195,30 +195,31 @@ def parse_yaml():
                 else:
                     raise IOError("Cannot parse count matrix.  Make sure it is .txt, .xls, or .xlsx")
             else:
-                raise IOError("Count Matrix Not Found.") 
-        elif yml['Tasks']['Align'] == True:
-            if yml['Lab'].lower() == 'other':
-                exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
-                exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
-                exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
-                exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
-            elif yml['Lab'].lower() == 'nimer':
-                exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
-                if exp.genome == 'mm10':
-                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
-                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
-                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
-                elif exp.genome == 'hg38':
-                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
-                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
-                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
-                elif exp.genome == 'hg19':
-                    exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
-                    exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
-                    exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
+                raise IOError("Count Matrix Not Found.")
         else:
             raise IOError('Please specify whether or not to perform alignment.', file=open(exp.file_log, 'a'))   
         
+        #Lab specific files
+        if yml['Lab'].lower() == 'other':
+            exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
+            exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
+            exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
+            exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
+        elif yml['Lab'].lower() == 'nimer':
+            exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
+            if exp.genome == 'mm10':
+                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
+                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
+                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
+            elif exp.genome == 'hg38':
+                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
+                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
+                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
+            elif exp.genome == 'hg19':
+                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
+                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
+                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
+     
         #GC_normalizaton
         if yml['Tasks']['GC_Normalization']:
             exp.gc_norm = True
@@ -240,26 +241,32 @@ def parse_yaml():
 
         #No DE option
         if yml['Tasks']['Differential_Expression'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['GC','DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA_DESeq2','PCA']
+            exp.tasks_complete = exp.tasks_complete + ['GC','DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA','PCA']
             print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
         #Spike
-        if yml['ERCC_spike'] or (yml['Normalization'].lower() == 'ercc'):
-            if yml['Tasks']['Align'] == False:
-                spike_matrix_loc = yml['Spike_matrix']
-                if os.path.exists(spike_matrix_loc):
-                    print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
-                    if spike_matrix_loc.split('.')[-1] == 'txt':
-                        exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
-                    elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
-                        exp.spike_counts = pd.read_excel(spike_matrix_loc)
-                    else:
-                        raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
-                else:
-                    raise IOError("Spike Count Matrix Not Found. ")
-                     
         if yml['ERCC_spike']:
             exp.spike = True
+            if 'Stage' in exp.tasks_complete:
+                if '/' != yml['Fastq_directory'][-1]:
+                    yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
+                if os.path.isdir(yml['Fastq_directory']):
+                    exp.fastq_folder=yml['Fastq_directory']
+                else:
+                    raise IOError("Can't Find Fastq Folder.")
+
+        if (yml['Normalization'].lower() == 'ercc') and (yml['Tasks']['Align'] == False):
+            spike_matrix_loc = yml['Spike_matrix']
+            if os.path.exists(spike_matrix_loc):
+                print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
+                if spike_matrix_loc.split('.')[-1] == 'txt':
+                    exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
+                elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
+                    exp.spike_counts = pd.read_excel(spike_matrix_loc)
+                else:
+                    raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
+            else:
+                raise IOError("Spike Count Matrix Not Found. ")
 
         #Fastq Folder
         if 'Stage' not in exp.tasks_complete:
@@ -761,10 +768,18 @@ def spike(exp):
                     #Submit STAR alingment for spike-ins for each sample
                     print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
+                    if os.path.isfile('{floc}{sample}_trim_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}_trim.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
+                        fname = '{floc}{sample}_trim'.format(floc=exp.fastq_folder, sample=sample)
+                    elif os.path.isfile('{floc}{sample}_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
+                        fname = '{floc}{sample}'.format(floc=exp.fastq_folder, sample=sample)
+                    else:
+                        print('Cannot find fastq files for spike-in alignment. \n', file=open(exp.log_file, 'a'))
+                        raise IOError('Cannot find fastq files for spike-in alignment.')
+
                     if exp.seq_type == 'paired':
-                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {floc}{sample}_trim_R1.fastq.gz {floc}{sample}_trim_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
+                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
                     elif exp.seq_type == 'single':
-                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {floc}{sample}_trim.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],floc=exp.fastq_folder,loc=ERCC_folder,sample=sample)
+                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
 
                     command_list = ['module rm python',
                                     'module rm perl',
@@ -1845,9 +1860,8 @@ def GSEA(exp):
 
             command_list = ['module rm python java perl',
                             'source activate RNAseq',
-                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_{rnk_name} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk,rnk_name=rnk_name),
-                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
-                           ]
+                            'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_{rnk_name} -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk,rnk_name=rnk_name)
+                           ] #for shrunken lfc: 'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
             exp.job_id.append(send_job(command_list=command_list, 
                                        job_name='{comparison}_{gset}_GSEA'.format(comparison=comparison,gset=gset),
@@ -1888,7 +1902,10 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     matplotlib.use('agg')
     from matplotlib_venn import venn2, venn2_circles
     import matplotlib.pyplot as plt
-    
+    import os
+
+    os.makedirs(folder, exist_ok=True)
+
     plt.figure(figsize=(7,7))
     
     font = {'family': 'sans-serif',
@@ -1947,7 +1964,7 @@ def overlaps(exp):
                                          ],
                                          index= comparison_list + ['Overlap']
                                         )
-                        plot_venn2(venn, key, out_dir)
+                        plot_venn2(venn, key, '{}{}/'.format(out_dir,name))
             
     elif len(exp.gene_lists) != 0:
         for name, gene_list in exp.gene_lists.items():
@@ -1962,17 +1979,18 @@ def overlaps(exp):
                                  ],
                                  index= list_names + ['Overlap']
                                 )
-                plot_venn2(venn,name,out_dir)
+                plot_venn2(venn,name,'{}{}/'.format(out_dir,name))
 
     for name,sig in exp.overlap_results.items():
+        sig_out=out_dir + name + '/'
+        os.makedirs(sig_out, exist_ok=True)
+
         if len(sig) == 0:
             print('Not performing GO enrichment for {name} overlaps since there are no overlapping genes./\n'.format(name=name), file=open(exp.log_file, 'a'))
         else:
             print('Performing GO enrichment for {name} overlaps: {time} \n'.format(name=name,time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))                    
-            enrichr(gene_list=list(sig), description='{name}_overlap'.format(name=name),out_dir=out_dir)
+            enrichr(gene_list=list(sig), description='{name}_overlap'.format(name=name),out_dir=sig_out)
 
-            sig_out=out_dir + name + '/'
-            os.makedirs(sig_out, exist_ok=True)
             with open(sig_out+name+'.txt', 'w') as file:
                 for gene in list(sig):
                     file.write('{}\n'.format(gene))
@@ -2149,7 +2167,7 @@ def diff_exp(exp):
         if 'GSEA' not in exp.tasks_complete:
             pipe_stage = 'GSEA'
             exp = GSEA(exp)
-        if 'Overlap' not in exp.tasks_complete:
+        if 'Overlaps' not in exp.tasks_complete:
             pipe_stage = 'signature overlaps'
             exp = overlaps(exp)
         #exp = decomposition(exp)  
