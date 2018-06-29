@@ -1,22 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 Nimerlab RNASeq Pipeline v0.5
 python3/utf-8
-
-Copyright © 2018 Daniel L. Karl
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation 
-files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, 
-modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the 
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE 
-WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Reads an experimetnal design yaml file (Version 0.5).
 Requires a conda environment 'RNAseq' made from environment.yml
@@ -24,17 +10,36 @@ Requires a conda environment 'RNAseq' made from environment.yml
 To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
-    - check if GSEA already done before starting (glob index.html)
     - if no chrname - skip bigwig generation
 
-Built with python 3
+Author: Daniel Karl
 
 '''
 
-import os,re,datetime,glob,pickle,time
+import os
+import re
+import glob
+import pickle
+import math
+import random
+import time
+import yaml
 from shutil import copy2,copytree,rmtree,move
+from datetime import datetime
 import subprocess as sub
 import pandas as pd
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib_venn import venn2, venn2_circles
+import seaborn as sns
+from sklearn.decomposition import PCA
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri, r, globalenv, Formula
+import gseapy
+
 version=0.5
 
 class Experiment(object):
@@ -47,7 +52,7 @@ class Experiment(object):
                   job_id=[],de_groups={},norm='Median-Ratios',designs={}, overlaps={}, gene_lists={},
                   tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
                   genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame(),
-                  seq_type=''
+                  seq_type='', alignment_mode='transcript'
                  ):
         self.scratch = scratch
         self.date = date
@@ -80,6 +85,7 @@ class Experiment(object):
         self.gc_norm=gc_norm
         self.gc_count_matrix = gc_count_matrix
         self.seq_type=seq_type
+        self.alignment_mode=alignment_mode
 
 class RaiseError(Exception):
     pass
@@ -88,7 +94,7 @@ def parse_yaml():
     '''
     Parse experimental info from yaml file
     '''    
-    import argparse,yaml
+    import argparse
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
@@ -121,17 +127,17 @@ def parse_yaml():
         os.remove(filename)
 
         #set new date
-        exp.date = datetime.datetime.today().strftime('%Y-%m-%d')  
+        exp.date = format(datetime.now(), '%Y-%m-%d') 
 
-        print('\n#############\nRestarting pipeline on {}, from last completed step.'.format(str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+        print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format(datetime.now()), file=open(exp.log_file,'a'))
 
         return exp 
     
     else: 
         #Passing paramters to new object
-        exp.date = datetime.datetime.today().strftime('%Y-%m-%d') 
+        exp.date = format(datetime.now(), '%Y-%m-%d') 
         
-        if yml['Output_directory'][-1] == '/':
+        if yml['Output_directory'].endswith('/'):
             exp.out_dir = '{}{}/'.format(yml['Output_directory'],exp.name)
         else:
             exp.out_dir = '{}/{}/'.format(yml['Output_directory'], exp.name)
@@ -143,7 +149,7 @@ def parse_yaml():
         exp.log_file = '{}{}-{}.log'.format(exp.out_dir,exp.name,exp.date)
         
         print('Pipeline version {} run on {} \n'.format(str(version),exp.date), file=open(exp.log_file, 'w'))
-        print('Beginning RNAseq Analysis: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning RNAseq Analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
         print('Reading experimental file...\n', file=open(exp.log_file, 'a'))
         print("Pipeline output folder: {}\n".format(exp.out_dir), file=open(exp.log_file, 'a'))
 
@@ -158,6 +164,10 @@ def parse_yaml():
             exp.genome = yml['Genome'].lower()
             print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
+        #Alignment mode. Default is transcript.
+        if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
+            exp.alignment_mode = 'gene'
+
         #Sequencing type
         if yml['Sequencing_type'].lower() not in ['paired','single']:
             raise ValueError("Must specify whether sequence is paired or single end.")
@@ -169,7 +179,7 @@ def parse_yaml():
 
         #Tasks to complete
         if yml['Tasks']['Align'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','RSEM','Kallisto','Count_Matrix', 'Sleuth']
+            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','Kallisto', 'Sleuth']
             print('Not performing alignment.', file=open(exp.log_file,'a'))
             count_matrix_loc=yml['Count_matrix']
             if os.path.exists(count_matrix_loc):
@@ -191,6 +201,7 @@ def parse_yaml():
         #Lab specific files
         if yml['Lab'].lower() == 'other':
             exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
+            exp.genome_indicies['STAR'] = yml['STAR_index']
             exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
             exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
             exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
@@ -198,14 +209,17 @@ def parse_yaml():
             exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
             if exp.genome == 'mm10':
                 exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
+                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
                 exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
                 exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
             elif exp.genome == 'hg38':
                 exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
+                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
                 exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
                 exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
             elif exp.genome == 'hg19':
                 exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
+                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
                 exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
                 exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
      
@@ -237,8 +251,8 @@ def parse_yaml():
         if yml['ERCC_spike']:
             exp.spike = True
             if 'Stage' in exp.tasks_complete:
-                if '/' != yml['Fastq_directory'][-1]:
-                    yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
+                if yml['Fastq_directory'][-1] != '/':
+                    yml['Fastq_directory'] = yml['Fastq_directory'] + '/'
                 if os.path.isdir(yml['Fastq_directory']):
                     exp.fastq_folder=yml['Fastq_directory']
                 else:
@@ -259,7 +273,7 @@ def parse_yaml():
 
         #Fastq Folder
         if 'Stage' not in exp.tasks_complete:
-            if '/' != yml['Fastq_directory'][-1]:
+            if yml['Fastq_directory'][-1] != '/':
                 yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
             if os.path.isdir(yml['Fastq_directory']):
                 exp.fastq_folder=yml['Fastq_directory']
@@ -456,15 +470,14 @@ def parse_yaml():
         #Initialized Process Complete List
         exp.tasks_complete.append('Parsed')
 
-        print('Experiment file parsed: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Experiment file parsed: {:%Y-%m-%d %H:%M:%S}\n'.format(.datetime.now()), file=open(exp.log_file, 'a'))
         
         return exp
 
-def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project):
+def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, threads=1):
     '''
     Sends job to LSF pegasus.ccs.miami.edu
     '''
-    import random
     
     os.makedirs(job_log_folder, exist_ok=True)
 
@@ -475,12 +488,13 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project):
 
     #BSUB -J JOB_{job_name}_ID_{random_number}
     #BSUB -R "rusage[mem={mem}]"
+    #BSUB -R "span[ptile={threads}]"
     #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
     #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
     #BSUB -W 120:00
     #BSUB -n 1
     #BSUB -q {q}
-    #BSUB {project}
+    #BSUB -P {project}
 
     {commands_string_list}'''.format(job_name = job_name,
                                      job_log_folder=job_log_folder,
@@ -491,7 +505,8 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project):
                                      rand_id=rand_id,
                                      q=q,
                                      mem=mem,
-                                     project=project
+                                     project=project,
+                                     threads=threads
                                     )
     
     job_path_name = job_log_folder + job_name+'.sh'
@@ -518,7 +533,7 @@ def job_wait(id_list, job_log_folder, log_file):
         if len(current) == 0:
             running = False
         else:
-            print('Waiting for jobs to finish... {time}'.format(time=str(datetime.datetime.now())), file=open(log_file, 'a'))
+            print('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(log_file, 'a'))
 
 def stage(exp):
     '''
@@ -540,7 +555,7 @@ def stage(exp):
     
     exp.tasks_complete.append('Stage')
     
-    print('Staging complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Staging complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
 
     return exp
 
@@ -584,7 +599,7 @@ def fastqc(exp):
      
     exp.tasks_complete.append('FastQC')
     
-    print('FastQC complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('FastQC complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -593,7 +608,7 @@ def fastq_screen(exp):
     Checks fastq files for contamination with alternative genomes using Bowtie2
     '''
 
-    print('Screening for contamination during sequencing: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Screening for contamination during sequencing: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     #Make QC folder
     exp.qc_folder = exp.scratch + 'QC/'
@@ -612,7 +627,7 @@ def fastq_screen(exp):
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
-                        'fastq_screen --aligner bowtie2 ' + exp.fastq_folder + sample + fastq_end
+                        'fastq_screen --threads 4 --aligner bowtie2 ' + exp.fastq_folder + sample + fastq_end
                        ]
 
         exp.job_id.append(send_job(command_list=command_list, 
@@ -621,7 +636,8 @@ def fastq_screen(exp):
                                    q= 'general',
                                    mem=3000,
                                    log_file=exp.log_file,
-                                   project=exp.project
+                                   project=exp.project,
+                                   threads=4
                                   )
                          )
         time.sleep(1)
@@ -638,7 +654,7 @@ def fastq_screen(exp):
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
     exp.tasks_complete.append('Fastq_screen')
-    print('Screening complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Screening complete: {:%Y-%m-%d %H:%M:%S}\n'.format(.datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -647,7 +663,7 @@ def trim(exp):
     Trimming based on standard UM SCCC Core Nextseq 500 technical errors.  Cudadapt can hard clip both ends, but may ignore 3' in future.
     '''
 
-    print('Beginning fastq trimming: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Beginning fastq trimming: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
         
     #change to experimental directory in scratch
     os.chdir(exp.fastq_folder)
@@ -672,9 +688,9 @@ def trim(exp):
                 if exp.seq_type == 'paired':
                     trim_u=str(exp.trim[0])
                     trim_U=str(exp.trim[1])
-                    cutadapt = 'cutadapt -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u {trim_u} -u -{trim_u} -U {trim_U} -U -{trim_U} -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample,trim_u=trim_u,trim_U=trim_U)
+                    cutadapt = 'cutadapt -j 4 -a AGATCGGAAGAGC -A AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -u {trim_u} -u -{trim_u} -U {trim_U} -U -{trim_U} -m 18 -o {loc}{sample}_trim_R1.fastq.gz -p {loc}{sample}_trim_R2.fastq.gz {loc}{sample}_R1.fastq.gz {loc}{sample}_R2.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample,trim_u=trim_u,trim_U=trim_U)
                 elif exp.seq_type == 'single':
-                    cutadapt = 'cutadapt -a AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -m 18 -o {loc}{sample}_trim.fastq.gz {loc}{sample}.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample)
+                    cutadapt = 'cutadapt -j 4 -a AGATCGGAAGAGC --cores=10 --nextseq-trim=20 -m 18 -o {loc}{sample}_trim.fastq.gz {loc}{sample}.fastq.gz'.format(qc=exp.qc_folder,loc=exp.fastq_folder,sample=sample)
                 
                 command_list = ['module rm python',
                                 'module rm perl',
@@ -688,7 +704,8 @@ def trim(exp):
                                            q= 'general',
                                            mem=1000,
                                            log_file=exp.log_file,
-                                           project=exp.project
+                                           project=exp.project,
+                                           threads=4
                                           )
                                  )
             
@@ -712,7 +729,7 @@ def trim(exp):
     os.chdir(exp.scratch)
 
     exp.tasks_complete.append('Trim')
-    print('Trimming complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Trimming complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
 
     return exp
 
@@ -721,7 +738,7 @@ def spike(exp):
     Align sequencing files to ERCC index using STAR aligner.
     '''
     if exp.spike:
-        print("Processing with ERCC spike-in: {}\n".format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print("Processing with ERCC spike-in: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
             
         ERCC_folder=exp.scratch + 'ERCC/'
         os.makedirs(ERCC_folder, exist_ok=True)
@@ -743,9 +760,9 @@ def spike(exp):
                         raise IOError('Cannot find fastq files for spike-in alignment.')
 
                     if exp.seq_type == 'paired':
-                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
+                        spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
                     elif exp.seq_type == 'single':
-                        spike='STAR --runThreadN 10 --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
+                        spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
 
                     command_list = ['module rm python',
                                     'module rm perl',
@@ -759,7 +776,8 @@ def spike(exp):
                                                q= 'general',
                                                mem=5000,
                                                log_file=exp.log_file,
-                                               project=exp.project
+                                               project=exp.project,
+                                               threads=4
                                               )
                                      )
 
@@ -799,11 +817,7 @@ def spike(exp):
             exp.spike = False
 
         if exp.spike:
-            import numpy as np
-            import matplotlib
             matplotlib.use('agg')
-            import matplotlib.pyplot as plt 
-            import seaborn as sns
 
             # Prep spike counts for plot (only if Nimer)
             if exp.genome_indicies['ERCC_Mix'] != None:
@@ -851,7 +865,7 @@ def spike(exp):
             else:
                 print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
 
-        print("ERCC spike-in processing complete: {}\n".format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print("ERCC spike-in processing complete: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
     
     else:
         print("No ERCC spike-in processing.\n", file=open(exp.log_file, 'a'))
@@ -873,34 +887,116 @@ def bam2bw(in_bam,out_bw,job_log_folder,name,genome):
 
     return script
 
-def rsem(exp):
+def star(exp):
     '''
-    Alignment to transcriptome using STAR and estimating expected counts using EM
-    '''  
-    print('\n Beginning RSEM-STAR alignments: {}'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
-    
-    RSEM_out = exp.scratch + 'RSEM_results/'
-    os.makedirs(RSEM_out, exist_ok=True)
-    os.chdir(RSEM_out)        
+    Alignment to genome using STAR and htseq
+    '''
+    print('\n Beginning RSEM-STAR transcriptome alignments: {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    out_dir = '{}STAR_results/'.format(exp.scratch)
+    os.makedirs(out_dir, exist_ok=True)
+    os.chdir(out_dir) 
 
     scan=0
     while scan < 2: #Loop twice to make sure source activate didn't fail the first time
         for number,sample in exp.samples.items():      
-            if '{loc}{sample}.genome.sorted.bam'.format(loc=RSEM_out,sample=sample) in glob.glob(RSEM_out + '*.bam'):
+            if '{}{}_Aligned.sortedByCoord.out.bam'.format(out_dir,sample) in glob.glob(out_dir + '*.bam'):
                 pass
             else:
-                print('Aligning using STAR and counting transcripts using RSEM for {sample}.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
+                print('Aligning using STAR to genome for {}.\n'.format(sample), file=open(exp.log_file, 'a'))
+                fname = '{floc}{sample}_trim'.format(floc=exp.fastq_folder, sample=sample)
 
                 if exp.seq_type == 'paired':
-                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+                    spike='STAR --runThreadN 4 --outSAMtype BAM SortedByCoordinate --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ --quantMode GeneCounts'.format(index=exp.genome_indicies['STAR'],fname=fname,loc=out_dir,sample=sample)
                 elif exp.seq_type == 'single':
-                    align= 'rsem-calculate-expression --star --star-gzipped-read-file --append-names --output-genome-bam --sort-bam-by-coordinate -p 15 {loc}{sample}_trim.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+                    spike='STAR --runThreadN 4 --outSAMtype BAM SortedByCoordinate --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ --quantMode GeneCounts'.format(index=exp.genome_indicies['STAR'],fname=fname,loc=out_dir,sample=sample)
+
+                genome=exp.genome_indicies['chrLen']
+
+                scaled=bam2bw(in_bam='{}{}_Aligned.sortedByCoord.out.bam'.format(out_dir,sample),
+                              out_bw='{}{}.star.rpm.bw'.format(out_dir,sample),
+                              job_log_folder=exp.job_folder,
+                              name='{}_to_bigwig'.format(sample),
+                              genome=genome
+                             )
+
+                command_list = ['module rm python share-rpms65',
+                                'source activate RNAseq',
+                                align,
+                                'python {}'.format(scaled),
+                                ]
+
+                exp.job_id.append(send_job(command_list=command_list, 
+                                            job_name= sample + '_STAR',
+                                            job_log_folder=exp.job_folder,
+                                            q= 'bigmem',
+                                            mem=60000,
+                                            log_file=exp.log_file,
+                                            project=exp.project,
+                                            threads=4
+                                            )
+                                  )
+
+                time.sleep(5)
+
+        #Wait for jobs to finish
+        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+
+        scan += 1
+
+    for number,sample in exp.samples.items():
+        del_file='{}{}.wig'.format(out_dir, sample,file)
+        if os.path.isfile(del_file):
+            os.remove(del_file)
+
+    print('STAR alignment to genome finished.', file=open(exp.log_file, 'a'))
+    
+    ### Generate one matrix for all counts
+    try:
+        counts_glob = glob.glob(out_dir + '*_ReadsPerGene.out.tab')
+        if len(counts_glob) != exp.sample_number:
+            print('At least one STAR alignment failed.', file=open(exp.log_file,'a'))
+            raise RaiseError('At least one STAR alignment failed. Check scripts and resubmit.')
+        else:
+            counts = pd.DataFrame(index=pd.read_csv(counts_glob[1], header=None, index_col=0, sep="\t").index)
+        
+            for number,sample in exp.samples.items():
+                exp.counts[sample] = pd.read_csv('{loc}{sample}_ReadsPerGene.out.tab'.format(loc=out_dir, sample=sample),header=None, index_col=0, sep="\t")[[3]]
+            exp.count_matrix = counts.iloc[4:,:]
+            exp.count_matrix.to_csv('{loc}STAR.count.matrix.txt'.format(loc=out_dir), header=True, index=True, sep="\t")
+
+    exp.tasks_complete.append('STAR')
+    print('STAR alignemnt and count generation complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+
+def rsem(exp):
+    '''
+    Alignment to transcriptome using STAR and estimating expected counts using EM with RSEM
+
+    '''  
+    print('\n Beginning RSEM-STAR transcriptome alignments: {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    
+    out_dir = '{}RSEM_results/'.format(exp.scratch)
+    
+    os.makedirs(out_dir, exist_ok=True)
+    os.chdir(out_dir)        
+
+    scan=0
+    while scan < 2: #Loop twice to make sure source activate didn't fail the first time
+        for number,sample in exp.samples.items():      
+            if '{}{}.genome.sorted.bam'.format(out_dir,sample) in glob.glob(out_dir + '*.bam'):
+                pass
+            else:
+                print('Aligning using STAR and counting transcripts using RSEM for {}.\n'.format(sample), file=open(exp.log_file, 'a'))
+
+                if exp.seq_type == 'paired':
+                    align='rsem-calculate-expression --star --star-gzipped-read-file --paired-end --append-names --output-genome-bam --sort-bam-by-coordinate -p 4 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
+                elif exp.seq_type == 'single':
+                    align= 'rsem-calculate-expression --star --star-gzipped-read-file --append-names --output-genome-bam --sort-bam-by-coordinate -p 4 {loc}{sample}_trim.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
 
                 plot_model='rsem-plot-model {sample} {sample}.models.pdf' .format(sample=sample)  
                 genome=exp.genome_indicies['chrLen']
-                
-                scaled=bam2bw(in_bam='{loc}{sample}.genome.sorted.bam'.format(loc=RSEM_out,sample=sample),
-                              out_bw='{loc}{sample}.rsem.rpm.bw'.format(loc=RSEM_out, sample=sample),
+
+                scaled=bam2bw(in_bam='{}{}.genome.sorted.bam'.format(out_dir,sample),
+                              out_bw='{}{}.rsem.rpm.bw'.format(out_dir,sample),
                               job_log_folder=exp.job_folder,
                               name='{}_to_bigwig'.format(sample),
                               genome=genome
@@ -919,10 +1015,15 @@ def rsem(exp):
                                             q= 'bigmem',
                                             mem=60000,
                                             log_file=exp.log_file,
-                                            project=exp.project
+                                            project=exp.project,
+                                            threads=4
                                             )
                                   )
+
+
                 time.sleep(5)
+
+
 
         #Wait for jobs to finish
         job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
@@ -932,16 +1033,48 @@ def rsem(exp):
     remove_files = ['genome.bam','transcript.bam','transcript.sorted.bam','transcrpt.sorted.bam.bai','wig']
     for number,sample in exp.samples.items():
         for file in remove_files:
-            del_file='{RSEM_out}{sample}.{file}'.format(RSEM_out=RSEM_out, sample=sample,file=file)
+            del_file='{}{}.{}'.format(out_dir, sample,file)
             if os.path.isfile(del_file):
                 os.remove(del_file)
-            pdf = '{RSEM_out}{sample}.models.pdf'.format(RSEM_out=RSEM_out, sample=sample)
+            pdf = '{}{}.models.pdf'.format(out_dir,sample)
             if os.path.isdir(exp.qc_folder) and os.path.isfile(pdf):
-                move(pdf, '{QC_folder}{sample}.models.pdf'.format(QC_folder=exp.qc_folder,sample=sample))
+                move(pdf, '{}{}.models.pdf'.format(exp.qc_folder,sample))
+    
+    ### Generate one matrix for all expected_counts
+    print('Generating Sample Matrix from RSEM.gene.results: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    matrix='rsem-generate-data-matrix '
+    columns=[]
+    for number,sample in exp.samples.items():
+        matrix = '{}{}{}.gene.results '.format(matrix,out_dir,sample)
+        columns.append(sample)
+        
+    matrix = matrix + '> {}RSEM.count.matrix.txt'.format(out_dir)
+        
+    command_list = ['module rm python',
+                    'source activate RNAseq',
+                    matrix
+                   ]
 
-    os.chdir(exp.scratch)
-    exp.tasks_complete.append('RSEM')
-    print('STAR alignemnt and RSEM counts complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    exp.job_id.append(send_job(command_list=command_list, 
+                               job_name= 'Generate_Count_Matrix',
+                               job_log_folder=exp.job_folder,
+                               q= 'general',
+                               mem=1000,
+                               log_file=exp.log_file,
+                               project=exp.project
+                              )
+                     )
+    
+    #Wait for jobs to finish
+    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+    
+    counts = pd.read_csv('{}RSEM.count.matrix.txt'.format(out_dir), header=0, index_col=0, sep="\t")
+    counts.columns = columns
+    counts.to_csv('{}RSEM.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+
+    exp.count_matrix = counts
+    exp.tasks_complete.append('STAR')
+    print('STAR alignemnt and RSEM counts complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
     
@@ -956,19 +1089,15 @@ def kallisto(exp):
     scan = 0
     while scan < 2:
 
-        print('Beginning Kallisto alignments: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning Kallisto alignments: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
 
         #Submit kallisto for each sample
         for number,sample in exp.samples.items():
 
-            kal_out = exp.scratch + 'Kallisto_results/' + sample + '/'
+            kal_out = '{}Kallisto_results/{}/'.format(exp.scratch, sample)
             os.makedirs(kal_out, exist_ok=True)
 
-            if '{loc}abundance.tsv'.format(loc=kal_out) in glob.glob(kal_out + '*.tsv'):
-                pass 
-            
-            else:   
-                
+            if '{loc}abundance.tsv'.format(loc=kal_out) not in glob.glob(kal_out + '*.tsv'):
                 if exp.seq_type == 'paired':
                     align = 'kallisto quant --index={index} --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(index=exp.genome_indicies['Kallisto'],out=kal_out,loc=exp.fastq_folder,sample=sample)
 
@@ -999,58 +1128,8 @@ def kallisto(exp):
     
     return exp
 
-def count_matrix(exp):
-    '''
-    Generates Count Matrix from RSEM results.
-    '''
-    print('Generating Sample Matrix from RSEM.gene.results: ' + str(datetime.datetime.now())+ '\n', file=open(exp.log_file, 'a'))
-
-    ### Generate one matrix for all expected_counts
-    matrix='rsem-generate-data-matrix '
-    columns=[]
-    for number,sample in exp.samples.items():
-        matrix = matrix + exp.scratch + 'RSEM_results/' + sample + '.genes.results '
-        columns.append(sample)
-        
-    matrix = matrix + '> {loc}RSEM.count.matrix.txt'.format(loc=exp.scratch + 'RSEM_results/')
-        
-    command_list = ['module rm python',
-                    'source activate RNAseq',
-                    matrix
-                   ]
-
-    exp.job_id.append(send_job(command_list=command_list, 
-                               job_name= 'Generate_Count_Matrix',
-                               job_log_folder=exp.job_folder,
-                               q= 'general',
-                               mem=1000,
-                               log_file=exp.log_file,
-                               project=exp.project
-                              )
-                     )
-    
-    #Wait for jobs to finish
-    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
-    
-    counts = pd.read_csv('{loc}RSEM.count.matrix.txt'.format(loc=(exp.scratch + 'RSEM_results/')), header=0, index_col=0, sep="\t")
-    counts.columns = columns
-    counts.to_csv('{loc}RSEM.count.matrix.txt'.format(loc=(exp.scratch + 'RSEM_results/')), header=True, index=True, sep="\t")
-
-    exp.count_matrix = counts
-    exp.tasks_complete.append('Count_Matrix')
-    print('Sample count matrix complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
-    
-    return exp
-
 def plot_PCA(counts, colData, out_dir, name):
     try:
-        from sklearn.decomposition import PCA
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt 
-        import matplotlib.patches as mpatches
-        import seaborn as sns
-
         to_remove=['gene_name','id']
         for x in to_remove:
             if x in list(counts.columns):
@@ -1074,8 +1153,8 @@ def plot_PCA(counts, colData, out_dir, name):
             red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
             blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
-        ax.set_xlabel('PCA Component 1: {var}% variance'.format(var=int(pca_score[0]*100))) 
-        ax.set_ylabel('PCA Component 2: {var}% varinace'.format(var=int(pca_score[1]*100)))
+        ax.set_xlabel('PCA Component 1: {:%} variance'.format(var=int(pca_score[0]))) 
+        ax.set_ylabel('PCA Component 2: {:%} varinace'.format(var=int(pca_score[1])))
 
 
         for i,sample in enumerate(bpca_df['name'].tolist()):
@@ -1088,8 +1167,8 @@ def plot_PCA(counts, colData, out_dir, name):
         
         sns.despine()
         plt.tight_layout()
-        ax.figure.savefig(out_dir + '{name}_PCA.png'.format(name=name))
-        ax.figure.savefig(out_dir + '{name}_PCA.svg'.format(name=name))
+        ax.figure.savefig(out_dir + '{}_PCA.png'.format(name))
+        ax.figure.savefig(out_dir + '{}_PCA.svg'.format(name))
         plt.close()
     except:
         raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
@@ -1098,11 +1177,6 @@ def GC_normalization(exp):
     '''
     Within lane loess GC normalization using EDAseq
     '''
-    import numpy as np
-    import rpy2.robjects as ro
-    from rpy2.robjects.packages import importr
-    from rpy2.robjects import pandas2ri
-
     pandas2ri.activate()
 
     edaseq = importr('EDASeq')
@@ -1113,7 +1187,7 @@ def GC_normalization(exp):
     fdata=ro.r('fData')
     normCounts=ro.r('normCounts')
 
-    print('Beginning within-lane GC length/content loess normalization for all samples: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+    print('Beginning within-lane GC length/content loess normalization for all samples: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file,'a'))
 
     GC_content = pd.read_csv(exp.genome_indicies['GC_Content'], header=0, index_col=0, sep="\t")
     raw_counts = exp.count_matrix
@@ -1130,7 +1204,7 @@ def GC_normalization(exp):
     data_norm.columns = GC_counts.columns
     exp.gc_count_matrix = data_norm
 
-    print('Finished GC normalization: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file,'a'))
+    print('Finished GC normalization: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file,'a'))
     exp.tasks_complete.append('GC')
 
     return exp 
@@ -1154,11 +1228,6 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
     de = whether or not to perform differential expression
     '''
     try:
-        import numpy as np
-        import rpy2.robjects as ro
-        from rpy2.robjects.packages import importr
-        from rpy2.robjects import pandas2ri
-        
         pandas2ri.activate()
         
         deseq = importr('DESeq2')
@@ -1185,7 +1254,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
 
         #RUVseq
         if norm_type.lower() == 'empirical':
-            print('Performing Normalization by removing unwatned variance of empirical negative control genes for {}: {}\n'.format(comparison,str(datetime.datetime.now())) , file=open(log,'a'))
+            print('Performing Normalization by removing unwatned variance of empirical negative control genes for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison,datetime.now()) , file=open(log,'a'))
             
             #determining non differentially expressed genes to use as empirical negative controls
             dds_emp = deseq.DESeqDataSetFromMatrix(countData = RUV_data.drop(columns='name').values,
@@ -1209,10 +1278,10 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(empirical), k=1)
             print(pdata(RUVg_set), file=open(log,'a'))
 
-            print('\nEmpirical negative control normalization complete for {}: {}\n'.format(comparison,str(datetime.datetime.now())), file=open(log, 'a'))
+            print('\nEmpirical negative control normalization complete for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison,datetime.now()), file=open(log, 'a'))
 
         elif norm_type.lower() == 'ercc':
-            print('Performing Normalization by removing unwanted variance using ERCC spike-ins for {}: {}\n'.format(comparison,str(datetime.datetime.now())), file=open(log,'a'))
+            print('Performing Normalization by removing unwanted variance using ERCC spike-ins for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison,datetime.now()), file=open(log,'a'))
             
             #rename ERCC join ERCC counts to gene counts and reindex for rpy2 R dataframe
             ERCC_counts['name'] = ERCC_counts.index
@@ -1228,7 +1297,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             data_set = edaseq.newSeqExpressionSet(RUV_data.drop(columns='name').values, phenoData=colData)
             RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(spike_list), k=1)
             print(pdata(RUVg_set), file=open(log,'a'))
-            print('\nERCC normalization complete for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(log, 'a'))
+            print('\nERCC normalization complete for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(log, 'a'))
 
         else:
             RaiseError('RUV() takes only "ercc" or "empirical" as options.')
@@ -1271,7 +1340,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         vst.columns = RUV_data.drop(columns='name').columns
         vst.index = RUV_data.name
 
-        print('Unwanted variance normalization complete for {comparison} using RUVSeq: {time}'.format(comparison=comparison, time=str(datetime.datetime.now())), file=open(log,'a'))
+        print('Unwanted variance normalization complete for {} using RUVSeq: {:%Y-%m-%d %H:%M:%S}'.format(comparison, datetime.now()), file=open(log,'a'))
 
         if de:
             return results, vst, lfc
@@ -1286,12 +1355,8 @@ def DESeq2(exp):
     '''
     Differential Expression using DESeq2
     '''
-    print('Beginning DESeq2 differential expression analysis: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Beginning DESeq2 differential expression analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
-    import numpy as np
-    import rpy2.robjects as ro
-    from rpy2.robjects.packages import importr
-    from rpy2.robjects import pandas2ri
     pandas2ri.activate()
     
     deseq = importr('DESeq2')
@@ -1306,16 +1371,22 @@ def DESeq2(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     if exp.gc_norm:
-        print('Using GC normalized RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
+        if exp.alignment_mode = 'gene':
+            print('Using GC normalized counts for differential expression.\n', file=open(exp.log_file,'a'))
+        else:
+            print('Using GC normalized RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
         count_matrix = exp.gc_count_matrix
     else:
-        print('Using rounded RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
+        if exp.alignment_mode == 'gene':
+            print('Using STAR-HTSEQ counts for differential expression.\n', file=open(exp.log_file,'a'))
+        else:
+            print('Using rounded RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
         count_matrix = exp.count_matrix
     
     dds={}
     
     for comparison,designs in exp.designs.items():
-        print('Beginning {}: {}\n'.format( comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         colData=designs['colData']
         design=ro.Formula(designs['design'])
         data=count_matrix[designs['all_samples']]
@@ -1351,7 +1422,7 @@ def DESeq2(exp):
                 print('ERCC size factors: {}'.format(str(ERCC_vector)), file=open(exp.log_file,'a'))
                 print('DESeq2 size factors: {}\n'.format(str(deseq2_vector)), file=open(exp.log_file,'a'))
             else:
-                print('\nERCC and deseq2 column lengths are different for {comparison}'.format(comparison=comparison), file=open(exp.log_file,'a'))
+                print('\nERCC and deseq2 column lengths are different for {}'.format(comparison), file=open(exp.log_file,'a'))
         else:
             pass
 
@@ -1466,7 +1537,7 @@ def DESeq2(exp):
 
     print(session(), file=open(exp.log_file, 'a'))    
     exp.tasks_complete.append('DESeq2')
-    print('DESeq2 differential expression complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('DESeq2 differential expression complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1476,7 +1547,7 @@ def PCA(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     for comparison,design in exp.designs.items():
-        print('Starting DESeq2 VST PCA analysis for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Starting DESeq2 VST PCA analysis for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         plot_PCA(counts=exp.de_results[comparison + '_vst'],
                  colData= design['colData'],
                  out_dir=out_dir,
@@ -1513,7 +1584,7 @@ def PCA(exp):
                 )
 
     exp.tasks_complete.append('PCA')
-    print('PCA for DESeq2 groups complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('PCA for DESeq2 groups complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
 
     return exp
 
@@ -1521,11 +1592,9 @@ def Sleuth(exp):
     '''
     Differential expression using sleuth from the Pachter lab: https://pachterlab.github.io/sleuth/
     '''
-    import pandas as pd
-    from rpy2.robjects.packages import importr
-    import rpy2.robjects as ro
-    from rpy2.robjects import pandas2ri, r, globalenv, Formula
+
     pandas2ri.activate()
+ 
     sleuth = importr('sleuth') 
     biomart = importr('biomaRt')
     dplyr = importr('dplyr', on_conflict="warn")
@@ -1535,7 +1604,7 @@ def Sleuth(exp):
     os.makedirs(out_dir, exist_ok=True)
 
     for comparison,design in exp.designs.items():
-        print('Beginning Sleuth differential expression analysis for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning Sleuth differential expression analysis for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
 
         path = []
         for name in design['colData'].sample_names.tolist():
@@ -1585,11 +1654,11 @@ def Sleuth(exp):
         so = sleuth.sleuth_lrt(so, 'reduced', 'full')
         print(sleuth.models(so), file=open(exp.log_file,'a'))
         sleuth_table=sleuth.sleuth_results(so, 'reduced:full','lrt',show_all=True)
-        exp.de_results['SL_' + comparison] = pandas2ri.ri2py(sleuth_table)
-        exp.de_results['SL_' + comparison].to_csv('{out_dir}{comparison}_slueth_results.txt'.format(out_dir=out_dir, comparison=comparison), header=True, index=True, sep="\t")
+        exp.de_results['SL_{}'.format(comparison)] = pandas2ri.ri2py(sleuth_table)
+        exp.de_results['SL_{}'.format(comparison)].to_csv('{}{}_slueth_results.txt'.format(oout_dir,comparison), header=True, index=True, sep="\t")
 
         print(session(), file=open(exp.log_file, 'a'))    
-        print('Sleuth differential expression complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Sleuth differential expression complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
 
     exp.tasks_complete.append('Sleuth')
@@ -1599,11 +1668,6 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     '''
     Generate volcano plot from deseq2 results dataframe and significant genes
     '''
-    import matplotlib
-    matplotlib.use('agg')
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import numpy as np
 
     sns.set(context='paper', style='white', font_scale=1)
     fig = plt.figure(figsize=(6,6), dpi=200)
@@ -1650,8 +1714,8 @@ def sigs(exp):
             print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2 for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
        
             exp.sig_lists[comparison] = {}
-            DE_results=exp.de_results['DE2_'+comparison]
-            SL_results=exp.de_results['SL_'+comparison]
+            DE_results=exp.de_results['DE2_{}'.format(comparison)]
+            SL_results=exp.de_results['SL_{}'.format(comparison)]
             SL_sig = set(SL_results[SL_results.qval < 0.05].ext_gene.tolist())
 
             DE2_2UP = set(DE_results[(DE_results.padj < 0.05) & (DE_results.log2FoldChange > 1)].gene_name.tolist())
@@ -1669,9 +1733,9 @@ def sigs(exp):
             exp.sig_lists[comparison]['All_DN'] = DE2_DN & SL_sig
 
         else:
-            print('Only using significant genes called from STAR/RSEM/DESeq2 for {comparison} analyses.'.format(comparison=comparison), file=open(exp.log_file, 'a'))
+            print('Only using significant genes called from STAR/RSEM/DESeq2 for {} analyses.'.format(comparison), file=open(exp.log_file, 'a'))
         
-            DE_results=exp.de_results['DE2_'+comparison]
+            DE_results=exp.de_results['DE2_{}'.format(comparison)]
 
             exp.sig_lists[comparison] = {}
 
@@ -1690,7 +1754,7 @@ def sigs(exp):
             exp.sig_lists[comparison]['All_DN'] = DE2_DN
 
         #volcano_plot    
-        volcano_out = out_dir + comparison + "/"
+        volcano_out = '{}{}/'.format(out_dir,comparison)
         os.makedirs(volcano_out, exist_ok=True)
 
         print('Generating Volcano Plots using DESeq2 results for significance', file=open(exp.log_file, 'a'))
@@ -1699,14 +1763,14 @@ def sigs(exp):
         volcano(results = DE_results, sig_up=DE2_UP, sig_down=DE2_DN, name='{}_noFC_filter'.format(comparison), out_dir=volcano_out)
 
     for comparison, sigs in exp.sig_lists.items():
-        sig_out=out_dir + comparison + '/'
+        sig_out='{}{}/'.format(out_dir,comparison)
         os.makedirs(sig_out, exist_ok=True)
         for sig, genes in sigs.items():
-            with open(sig_out+sig+'.txt', 'w') as file:
+            with open('{}{}.txt'.format(sig_out,sig), 'w') as file:
                 for gene in genes:
                     file.write('{}\n'.format(gene))
 
-    print('Signature and Volcano Plot generation complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Signature and Volcano Plot generation complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     exp.tasks_complete.append('Sigs')
     return exp
 
@@ -1714,15 +1778,12 @@ def clustermap(exp):
     '''
     Generate heatmap of differentially expressed genes using variance stablized transfrmed log2counts.
     '''
-    import matplotlib
-    matplotlib.use('agg')
-    import seaborn as sns
     
     out_dir=exp.scratch + 'Heatmaps/'
     os.makedirs(out_dir, exist_ok=True)
     
     for comparison,design in exp.designs.items():
-        vst = exp.de_results[comparison + '_vst']
+        vst = exp.de_results['{}_vst'.format(comparison)]
         vst['gene_name']=vst.index
         vst['gene_name']=vst.gene_name.apply(lambda x: x.split("_")[1])
 
@@ -1731,27 +1792,27 @@ def clustermap(exp):
             print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
-            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
-            CM.savefig('{out_dir}{comparison}_2FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM.savefig('{}{}_2FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
+            CM.savefig('{}{}_2FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
         sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
         if len(sig15) == 0:
             print('There are no significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
-            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
-            CM15.savefig('{out_dir}{comparison}_1.5FC_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM15.savefig('{}{}_1.5FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
+            CM15.savefig('{}{}_1.5FC_Heatmap.svg'.format(oout_dir,comparison), dpi=300)
 
         sigAll = list(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
         if len(sigAll) == 0:
             print('There are no significantly differentially expressed genes without a fold change in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sigAll)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
-            CM15.savefig('{out_dir}{comparison}_noFCfilter_Heatmap.png'.format(out_dir=out_dir,comparison=comparison), dpi=300)
-            CM15.savefig('{out_dir}{comparison}_noFCfilter_Heatmap.svg'.format(out_dir=out_dir,comparison=comparison), dpi=300)
+            CM15.savefig('{}{}_noFCfilter_Heatmap.png'.format(out_dir,comparison), dpi=300)
+            CM15.savefig('{}{}_noFCfilter_Heatmap.svg'.format(out_dir,comparison), dpi=300)
     
     exp.tasks_complete.append('Heatmaps')
-    print('Heatmaps for DESeq2 differentially expressed genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Heatmaps for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1759,8 +1820,6 @@ def enrichr(gene_list, description, out_dir):
     '''
     Perform GO enrichment and KEGG enrichment Analysis using Enrichr: http://amp.pharm.mssm.edu/Enrichr/
     '''
-
-    import gseapy
     
     gseapy.enrichr(gene_list=gene_list,
                    description='{description}_KEGG'.format(description=description),
@@ -1783,22 +1842,22 @@ def GO_enrich(exp):
     '''
     Perform GO enrichment analysis on significanttly differentially expressed genes.
     '''
-    GO_dir=exp.scratch + 'GO_enrichment/'
+    GO_dir='{}GO_enrichment/'.format(exp.scratch)
     os.makedirs(GO_dir, exist_ok=True)
     
     for comparison,design in exp.designs.items():
-        print('Beginning GO enrichment for {}: {}\n'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning GO enrichment for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         
         for name,sig in exp.sig_lists[comparison].items():
             if len(sig) == 0:
-                print('There are no significantly differentially expressed genes in {name} {comparison}.  Ignoring GO enrichment. \n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
+                print('There are no significantly differentially expressed genes in {} {}.  Ignoring GO enrichment. \n'.format(name,comparison), file=open(exp.log_file,'a'))
             else:
-                GO_out = GO_dir + comparison + '/'
+                GO_out = '{}{}/'.format(GO_dir, comparison)
                 os.makedirs(GO_out,exist_ok=True)
-                enrichr(gene_list=list(sig), description='{comparison}_{name}'.format(comparison=comparison,name=name),out_dir=GO_out)
+                enrichr(gene_list=list(sig), description='{}_{}'.format(comparison,name),out_dir=GO_out)
 
     exp.tasks_complete.append('GO_enrich')
-    print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('GO Enrichment analysis for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1806,9 +1865,8 @@ def GSEA(exp):
     '''
     Perform Gene Set Enrichment Analysis using gsea 3.0 from the Broad Institute.
     '''
-    import math
 
-    out_dir = exp.scratch + 'DESeq2_GSEA'
+    out_dir = '{}DESeq2_GSEA'.format(exp.scratch)
     os.makedirs(out_dir, exist_ok=True)
 
     print('Starting GSEA enrichment.', file=open(exp.log_file, 'a'))
@@ -1817,24 +1875,24 @@ def GSEA(exp):
         #check if comparison already done.
 
         print('GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
-        out_compare = '{loc}/{comparison}'.format(loc=out_dir, comparison=comparison)
+        out_compare = '{}/{}'.format(out_dir,comparison)
         os.makedirs(out_compare, exist_ok=True)
 
-        results=exp.de_results['DE2_' + comparison].dropna()
+        results=exp.de_results['DE2_{}'.format(comparison)].dropna()
 
         #generating ranked list based on log2foldchange and pvalue
         results['ranked'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
         results.sort_values(by='ranked', ascending=False, inplace=True)
         results.index = results.gene_name
         ranked = results.ranked.dropna()
-        ranked.to_csv('{out_compare}/{comparison}_LFC-L10P.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+        ranked.to_csv('{}/{}_LFC-L10P.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
         #generate ranked list based on shrunken log2foldchange
         lfc = exp.de_results['shrunkenLFC_' + comparison].dropna()
         lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
         lfc.index = lfc.gene_name
         lfc = lfc.log2FoldChange.dropna()
-        lfc.to_csv('{out_compare}/{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+        lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
         #double check this is the wald statistic before using for ranking
         if (design['design'] == '~compensation + main_comparison') and (exp.norm.lower() != 'median-ratios'):
@@ -1845,15 +1903,15 @@ def GSEA(exp):
             print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
             results.sort_values(by='ranked', ascending=False, inplace=True)
             results = results.stat.dropna()
-            ranked.to_csv('{out_compare}/{comparison}_stat.rnk'.format(out_compare=out_compare, comparison=comparison), header=False, index=True, sep="\t")
+            ranked.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
             rnk = '{}_stat.rnk'.format(comparison)
             rnk_name = 'wald'
 
-        rnk2 = '{comparison}_shrunkenLFC.rnk'.format(out_compare=out_compare, comparison=comparison)
+        rnk2 = '{}_shrunkenLFC.rnk'.format(comparison)
 
         os.chdir(out_compare)
 
-        print('Beginning GSEA enrichment for {} using preranked genes: {}'.format(comparison, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning GSEA enrichment for {} using preranked genes: {:%Y-%m-%d %H:%M:%S}'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         print('Genes with positive LFC (to the left left in GSEA output graph) are upregulated in experimental vs control conditions. Genes with negative LFC (on right) are downregulated genes in experimental samples vs controls.\n', file=open(exp.log_file,'a'))
 
         gmts={'h.all': 'Hallmarks',
@@ -1863,7 +1921,7 @@ def GSEA(exp):
               'c2.cgp': 'Curated_Gene_Sets'
               }
         for gset,name in gmts.items():
-            set_dir=out_compare + '/' + name 
+            set_dir='{}/{}'.format(out_compare,name) 
             os.makedirs(set_dir, exist_ok=True)
 
             command_list = ['module rm python java perl',
@@ -1872,7 +1930,7 @@ def GSEA(exp):
                            ] #for shrunken lfc: 'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
             exp.job_id.append(send_job(command_list=command_list, 
-                                       job_name='{comparison}_{gset}_GSEA'.format(comparison=comparison,gset=gset),
+                                       job_name='{}_{}_GSEA'.format(comparison,gset),
                                        job_log_folder=exp.job_folder,
                                        q= 'general',
                                        mem=3000,
@@ -1887,16 +1945,16 @@ def GSEA(exp):
 
     for comparison,design in exp.designs.items():
         for gset,name in gmts.items():
-            path=glob.glob('{loc}/{comparison}/{name}/*'.format(loc=out_dir, comparison=comparison,name=name))[0]
+            path=glob.glob('{}/{}/{}/*'.format(lout_dir,comparison,name))[0]
             if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
-                os.chdir('{loc}/{comparison}/{name}'.format(loc=out_dir, comparison=comparison,name=name))
+                os.chdir('{}/{}/{}'.format(out_dir,comparison,name))
                 open('Within each folder click "index.html" for results','w')
             else:
-                print('GSEA did not complete {name} for {comparison}.'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))            
+                print('GSEA did not complete {} for {}.'.format(name,comparison), file=open(exp.log_file,'a'))            
 
     os.chdir(exp.scratch)
     exp.tasks_complete.append('GSEA')
-    print('GSEA analysis complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('GSEA analysis complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
@@ -1906,12 +1964,6 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     Plots a 2 way venn.
     Saves to file.
     '''
-    import matplotlib
-    matplotlib.use('agg')
-    from matplotlib_venn import venn2, venn2_circles
-    import matplotlib.pyplot as plt
-    import os
-
     os.makedirs(folder, exist_ok=True)
 
     plt.figure(figsize=(7,7))
@@ -1942,8 +1994,8 @@ def plot_venn2(Series, string_name_of_overlap, folder):
      
     plt.title(string_name_of_overlap + " Overlaps")
     plt.tight_layout()
-    plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".svg", dpi=200)
-    plt.savefig(folder + string_name_of_overlap + "-overlap-" + datetime.datetime.today().strftime('%Y-%m-%d') + ".png", dpi=200)
+    plt.savefig('{}{}-overlap-{:%Y-%m-%d}.svg'.format(folder,string_name_of_overlap, datetime.now()))
+    plt.savefig('{}{}-overlap-{:%Y-%m-%d}.png'.format(folder,string_name_of_overlap, datetime.now()), dpi=300)
     plt.close()
 
 def overlaps(exp):
@@ -1955,16 +2007,16 @@ def overlaps(exp):
     
     if len(exp.overlaps) != 0:
         names=['2FC_UP', '2FC_DN', '15FC_UP','15FC_DN', 'All_UP', 'All_DN']
-        print('Beginning overlap of significant genes: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning overlap of significant genes: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
 
         for overlap,comparison_list in exp.overlaps.items():
             if len(comparison_list) != 0:
                 for name in names:
-                    key= '{overlap}_{name}'.format(overlap=overlap,name=name)
+                    key= '{}_{}'.format(overlap,name)
                     exp.overlap_results[key] = exp.sig_lists[comparison_list[0]][name] & exp.sig_lists[comparison_list[1]][name] 
                     
                     if len(exp.overlap_results[key]) == 0:
-                        print('{overlap}_{name} have no overlapping genes'.format(overlap=overlap,name=name), file=open(exp.log_file,'a'))
+                        print('{}_{} have no overlapping genes'.format(overlap,name), file=open(exp.log_file,'a'))
                     else:
                         venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results[key]),
                                           len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results[key]),
@@ -1978,7 +2030,7 @@ def overlaps(exp):
         for name, gene_list in exp.gene_lists.items():
             exp.overlap_results[name]= gene_list[0] & gene_list[1]
             if len(exp.overlap_results[name]) == 0:
-                    print('{name} has no overlapping genes'.format(name=name), file=open(exp.log_file,'a'))
+                    print('{} has no overlapping genes'.format(name), file=open(exp.log_file,'a'))
             else:
                 list_names = gene_list.keys()
                 venn = pd.Series([len(gene_list[list_names[0]])-len(exp.overlap_results[name]),
@@ -1990,27 +2042,27 @@ def overlaps(exp):
                 plot_venn2(venn,name,'{}{}/'.format(out_dir,name))
 
     for name,sig in exp.overlap_results.items():
-        sig_out=out_dir + name + '/'
+        sig_out='{}{}/'.format(out_dir,name)
         os.makedirs(sig_out, exist_ok=True)
 
         if len(sig) == 0:
-            print('Not performing GO enrichment for {name} overlaps since there are no overlapping genes./\n'.format(name=name), file=open(exp.log_file, 'a'))
+            print('Not performing GO enrichment for {} overlaps since there are no overlapping genes.\n'.format(name), file=open(exp.log_file, 'a'))
         else:
-            print('Performing GO enrichment for {name} overlaps: {time} \n'.format(name=name,time=str(datetime.datetime.now())), file=open(exp.log_file, 'a'))                    
-            enrichr(gene_list=list(sig), description='{name}_overlap'.format(name=name),out_dir=sig_out)
+            print('Performing GO enrichment for {} overlaps: {} \n'.format(name,datetime.now()), file=open(exp.log_file, 'a'))                    
+            enrichr(gene_list=list(sig), description='{}_overlap'.format(name),out_dir=sig_out)
 
-            with open(sig_out+name+'.txt', 'w') as file:
+            with open('{}{}.txt'.format(sig_out,name), 'w') as file:
                 for gene in list(sig):
                     file.write('{}\n'.format(gene))
 
     exp.tasks_complete.append('Overlaps')
-    print('Overlap analysis complete: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+    print('Overlap analysis complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
                    
     return exp
 
 def final_qc(exp):
     try:
-        print('Beginning final qc: {}\n'.format(str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Beginning final qc: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
         
         os.chdir(exp.scratch)
 
@@ -2041,31 +2093,30 @@ def final_qc(exp):
 
     except:
         print('Error during MultiQC.', file=open(exp.log_file,'a'))
-        filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error during MultiQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def finish(exp):
     try:
-        import yaml
 
         os.chdir(exp.scratch)
         
         if exp.seq_type == 'paired':
             for number,sample in exp.samples.items():
-                R_list = ['{loc}{sample}_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_trim_R1.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_trim_R2.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)
+                R_list = ['{}{}_R1.fastq.gz'.format(exp.fastq_folder,sample),
+                          '{}{}_R2.fastq.gz'.format(exp.fastq_folder,sample),
+                          '{}{}_trim_R1.fastq.gz'.format(exp.fastq_folder,sample),
+                          '{}{}_trim_R2.fastq.gz'.format(exp.fastq_folder,sample)
                          ]
                 for R in R_list:
                     if os.path.isfile(R):
                         os.remove(R)
         elif exp.seq_type == 'single':
             for number,sample in exp.samples.items():
-                R_list = ['{loc}{sample}.fastq.gz'.format(loc=exp.fastq_folder,sample=sample),
-                          '{loc}{sample}_trim.fastq.gz'.format(loc=exp.fastq_folder,sample=sample)                          
+                R_list = ['{}{}.fastq.gz'.format(exp.fastq_folder,sample),
+                          '{}{}_trim.fastq.gz'.format(exp.fastq_folder,sample)                          
                          ]
                 for R in R_list:
                     if os.path.isfile(R):
@@ -2077,7 +2128,7 @@ def finish(exp):
         for package in versions['dependencies']:
             print(package, file=open(exp.log_file, 'a'))
 
-        print('\n{name} analysis complete!  Performed the following tasks: '.format(name=exp.name)+ '\n', file=open(exp.log_file, 'a'))
+        print('\n{} analysis complete!  Performed the following tasks: '.format(exp.name)+ '\n', file=open(exp.log_file, 'a'))
         print(str(exp.tasks_complete) + '\n', file=open(exp.log_file, 'a'))
         
         scratch_log= exp.scratch + exp.log_file.split("/")[-1]
@@ -2087,16 +2138,16 @@ def finish(exp):
 
         exp.tasks_complete.append('Finished')
 
-        filename= '{out}{name}_{date}.pkl'.format(out=exp.out_dir, name=exp.name, date=exp.date)
+        filename= '{}{}_{}.pkl'.format(exp.out_dir,exp.name,exp.date)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment) 
 
-        print('Moved all files into {}: {}\n'.format(exp.out_dir, str(datetime.datetime.now())), file=open(exp.log_file, 'a'))
+        print('Moved all files into {}: {:%Y-%m-%d %H:%M:%S}\n'.format(exp.out_dir, datetime.now()), file=open(exp.log_file, 'a'))
         print("\n Finger's Crossed!!!", file=open(exp.log_file, 'a'))
 
     except:
         print('Error while finishing pipeline.', file=open(exp.log_file,'a'))
-        filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch, exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error finishing pipeline. Fix problem then resubmit with same command to continue from last completed step.')
@@ -2120,7 +2171,7 @@ def preprocess(exp):
         return exp
     except:
         print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
-        filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
@@ -2131,16 +2182,19 @@ def align(exp):
         if 'Spike' not in exp.tasks_complete:
             pipe_stage = 'spike in processing'
             exp=spike(exp)
-        if 'RSEM' not in exp.tasks_complete:
-            pipe_stage = 'STAR-RSEM alignment'
-            exp=rsem(exp)
+        if 'STAR' not in exp.tasks_complete:
+            pipe_stage = 'STAR alignment'
+            if exp.alignment_mode == 'gene':
+                exp = star(exp)
+            else:
+                exp=rsem(exp)
         if 'Kallisto' not in exp.tasks_complete:
             pipe_stage = 'Kallisto alignment'
             exp=kallisto(exp)
         return exp
     except:
         print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
-        filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
@@ -2148,9 +2202,6 @@ def align(exp):
 def diff_exp(exp):
     try:
         pipe_stage='differential expression'
-        if 'Count_Matrix' not in exp.tasks_complete:
-            pipe_stage = 'count matrix generation'
-            exp = count_matrix(exp)
         if 'GC' not in exp.tasks_complete:
             pipe_stage = 'GC Normalization'
             exp = GC_normalization(exp)
@@ -2182,7 +2233,7 @@ def diff_exp(exp):
         return exp
     except:
         print('Error in {}.'.format(pipe_stage), file=open(exp.log_file,'a'))
-        filename= '{out}{name}_incomplete.pkl'.format(out=exp.scratch, name=exp.name)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
@@ -2197,5 +2248,6 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
+    matplotlib.use('agg')
     pipeline()
 

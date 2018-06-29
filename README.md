@@ -6,8 +6,10 @@ This pipline handles processing and analyses for RNAseq data on the University o
 2. Fastq quality measurements
 3. Adapter and quality fastq trimming
 4. Spike-in assessment (if applicable)
-5. Transcriptome alignment using STAR (with RSEM expected counts) and Kallisto (not for single-end)
-6. Generation of scaled (reads per million) bigwig files from transcriptome alignment
+5. Alignment
+	- Transcriptome alignment using STAR with RSEM expected counts and optional Kallisto (not for single-end) with GENCODE annotations
+	- Genome alignment using STAR counts with GENCODE annotations
+6. Generation of scaled (reads per million) bigwig files from alignment
 7. Optional within-sample GC normalization.
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
 9. Differential expression using DESeq2 (both unshunken LFC and apeglm or ashr shrunken LFC are reported)
@@ -25,6 +27,7 @@ Option Details:
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
 	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation). Also reports ashr lfc shrunken values.
+* Alignment_Mode: Whether to align to transcriptome with RSEM-STAR (default) or to genome with STAR.
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
 * GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour for CG content file generatation.
 * Sequencing_type: paired or single end sequencing.
@@ -34,13 +37,14 @@ Other options:
 *  Sig_matrix: if solely performing overlaps, path to file with samples names (top row) and gene names to overlap below. Overlap of over two columns will be performed (1v2, 3v4... etc)
 
 Lab options if running outside of Nimer Lab access:
-*  Scratch folder: Folder for staging.
-*  RSEM_STAR_index: Specify location of previously generated index for alignment.
+* Scratch folder: Folder for staging.
+* RSEM_STAR_index: Specify location of previously generated index for alignment.
 	* To create the index for transcriptome alignment use rsem-prepare-reference function.  Recommendations: --star, gencocde .gtf, no_alt genome assembly.
+* STAR_index: Specify location of previously generated index for alignment.
 * Kallisto_index: Specify locaiton of previously generated index for alignment. Create using default Kallisto index function.
 * ERCC_STAR_index: Specify locaiton of previously generated STAR index for spike-ins.
 	* To create:  donwload ERCC fasta and gtf, use STAR genomeGenerate function
-* ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index folder.  For bigwig generation.
+* ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index or STAR_index folder.  For bigwig generation.
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.  In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
 
@@ -88,6 +92,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.GSEA()
 - RNAseq.final_qc()
 - RNAseq.PCA()
+- RNAseq.star()
 - RNAseq.rsem()
 - RNAseq.Sleuth()
 - RNAseq.kallisto()
@@ -96,8 +101,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.spike()
 - RNAseq.splicing()
 - RNAseq.overlaps()
-- RNAseq.stage()
-- RNAseq.count_matrix()      
+- RNAseq.stage()    
 - RNAseq.trim()
 - RNAseq.GC_normalization()
 
