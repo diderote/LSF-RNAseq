@@ -1661,7 +1661,7 @@ def Sleuth(exp):
         print(sleuth.models(so), file=open(exp.log_file,'a'))
         sleuth_table=sleuth.sleuth_results(so, 'reduced:full','lrt',show_all=True)
         exp.de_results['SL_{}'.format(comparison)] = pandas2ri.ri2py(sleuth_table)
-        exp.de_results['SL_{}'.format(comparison)].to_csv('{}{}_slueth_results.txt'.format(oout_dir,comparison), header=True, index=True, sep="\t")
+        exp.de_results['SL_{}'.format(comparison)].to_csv('{}{}_slueth_results.txt'.format(out_dir,comparison), header=True, index=True, sep="\t")
 
         print(session(), file=open(exp.log_file, 'a'))    
         print('Sleuth differential expression complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
