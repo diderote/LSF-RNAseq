@@ -133,7 +133,6 @@ def parse_yaml():
 
             return exp 
         else:
-            print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S} from the beginning.'.format(datetime.now()), file=open(exp.log_file,'a'))
             os.remove(filename)
 
     #Passing paramters to new object
