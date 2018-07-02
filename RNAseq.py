@@ -470,7 +470,7 @@ def parse_yaml():
         #Initialized Process Complete List
         exp.tasks_complete.append('Parsed')
 
-        print('Experiment file parsed: {:%Y-%m-%d %H:%M:%S}\n'.format(.datetime.now()), file=open(exp.log_file, 'a'))
+        print('Experiment file parsed: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
         
         return exp
 
