@@ -1397,8 +1397,8 @@ def DESeq2(exp):
         design=ro.Formula(designs['design'])
         data=count_matrix[designs['all_samples']]
 
-        # filtering for genes with more than 5 counts in two samples
-        #data = round(data[data[data > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
+        # filtering for genes with more than 1 count in two samples
+        data = round(data[data[data > 1].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
 
         dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
                                                        colData=colData,
@@ -1791,7 +1791,6 @@ def clustermap(exp):
     
     for comparison,design in exp.designs.items():
         vst = exp.de_results['{}_vst'.format(comparison)]
-        vst = vst[vst.sum(axis='columns') > 5]
         vst['gene_name']=vst.index
         vst['gene_name']=vst.gene_name.apply(lambda x: x.split("_")[1])
 
@@ -1799,7 +1798,7 @@ def clustermap(exp):
         if len(sig) == 0:
             print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
-            CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
+            CM = sns.smap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM.savefig('{}{}_2FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM.savefig('{}{}_2FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
