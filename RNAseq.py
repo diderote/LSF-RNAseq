@@ -132,345 +132,347 @@ def parse_yaml():
             print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format(datetime.now()), file=open(exp.log_file,'a'))
 
             return exp 
+        else:
+            print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S} from the beginning.'.format(datetime.now()), file=open(exp.log_file,'a'))
+            os.remove(filename)
+
+    #Passing paramters to new object
+    exp.date = format(datetime.now(), '%Y-%m-%d') 
     
-    else: 
-        #Passing paramters to new object
-        exp.date = format(datetime.now(), '%Y-%m-%d') 
-        
-        if yml['Output_directory'].endswith('/'):
-            exp.out_dir = '{}{}/'.format(yml['Output_directory'],exp.name)
-        else:
-            exp.out_dir = '{}/{}/'.format(yml['Output_directory'], exp.name)
-        
-        #Make out directory if it doesn't exist
-        os.makedirs(exp.out_dir, exist_ok=True)
+    if yml['Output_directory'].endswith('/'):
+        exp.out_dir = '{}{}/'.format(yml['Output_directory'],exp.name)
+    else:
+        exp.out_dir = '{}/{}/'.format(yml['Output_directory'], exp.name)
+    
+    #Make out directory if it doesn't exist
+    os.makedirs(exp.out_dir, exist_ok=True)
 
-        #Log file
-        exp.log_file = '{}{}-{}.log'.format(exp.out_dir,exp.name,exp.date)
-        
-        print('Pipeline version {} run on {} \n'.format(str(version),exp.date), file=open(exp.log_file, 'w'))
-        print('Beginning RNAseq Analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
-        print('Reading experimental file...\n', file=open(exp.log_file, 'a'))
-        print("Pipeline output folder: {}\n".format(exp.out_dir), file=open(exp.log_file, 'a'))
+    #Log file
+    exp.log_file = '{}{}-{}.log'.format(exp.out_dir,exp.name,exp.date)
+    
+    print('Pipeline version {} run on {} \n'.format(str(version),exp.date), file=open(exp.log_file, 'w'))
+    print('Beginning RNAseq Analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    print('Reading experimental file...\n', file=open(exp.log_file, 'a'))
+    print("Pipeline output folder: {}\n".format(exp.out_dir), file=open(exp.log_file, 'a'))
 
-        #Setting Job Folder
-        exp.job_folder = '{}logs/'.format(exp.scratch)
-        os.makedirs(exp.job_folder, exist_ok=True)
+    #Setting Job Folder
+    exp.job_folder = '{}logs/'.format(exp.scratch)
+    os.makedirs(exp.job_folder, exist_ok=True)
 
-        #Genome
-        if yml['Genome'].lower() not in ['hg38', 'mm10', 'hg19']:
-            raise ValueError("Genome must be either hg38, hg19, or mm10.")
-        else:
-            exp.genome = yml['Genome'].lower()
-            print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
+    #Genome
+    if yml['Genome'].lower() not in ['hg38', 'mm10', 'hg19']:
+        raise ValueError("Genome must be either hg38, hg19, or mm10.")
+    else:
+        exp.genome = yml['Genome'].lower()
+        print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
-        #Sequencing type
-        if yml['Sequencing_type'].lower() not in ['paired','single']:
-            raise ValueError("Must specify whether sequence is paired or single end.")
-        else:
-            exp.seq_type = yml['Sequencing_type'].lower()
-            if exp.seq_type == 'single':
-                exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
-            print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
+    #Sequencing type
+    if yml['Sequencing_type'].lower() not in ['paired','single']:
+        raise ValueError("Must specify whether sequence is paired or single end.")
+    else:
+        exp.seq_type = yml['Sequencing_type'].lower()
+        if exp.seq_type == 'single':
+            exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
+        print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
 
-        #Tasks to complete
-        if yml['Tasks']['Align'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','Kallisto', 'Sleuth']
-            print('Not performing alignment.', file=open(exp.log_file,'a'))
-            count_matrix_loc=yml['Count_matrix']
-            if os.path.exists(count_matrix_loc):
-                print("Count matrix found at {}".format(count_matrix_loc), file=open(exp.log_file, 'a'))
-                print("Performing only DESeq2 on for DE", file=open(exp.log_file, 'a'))
-                if count_matrix_loc.split('.')[-1] == 'txt':
-                    exp.count_matrix = pd.read_csv(count_matrix_loc, header= 0, index_col=0, sep="\t")
-                elif (count_matrix_loc.split('.')[-1] == 'xls') or (count_matrix_loc.split('.')[-1] == 'xlsx'):
-                    exp.count_matrix = pd.read_excel(count_matrix_loc)
-                else:
-                    raise IOError("Cannot parse count matrix.  Make sure it is .txt, .xls, or .xlsx")
+    #Tasks to complete
+    if yml['Tasks']['Align'] == False:
+        exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','Kallisto', 'Sleuth']
+        print('Not performing alignment.', file=open(exp.log_file,'a'))
+        count_matrix_loc=yml['Count_matrix']
+        if os.path.exists(count_matrix_loc):
+            print("Count matrix found at {}".format(count_matrix_loc), file=open(exp.log_file, 'a'))
+            print("Performing only DESeq2 on for DE", file=open(exp.log_file, 'a'))
+            if count_matrix_loc.split('.')[-1] == 'txt':
+                exp.count_matrix = pd.read_csv(count_matrix_loc, header= 0, index_col=0, sep="\t")
+            elif (count_matrix_loc.split('.')[-1] == 'xls') or (count_matrix_loc.split('.')[-1] == 'xlsx'):
+                exp.count_matrix = pd.read_excel(count_matrix_loc)
             else:
-                raise IOError("Count Matrix Not Found.")
-        elif yml['Tasks']['Align'] == True:
-            #Alignment mode. Default is transcript.
-            if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
-                exp.alignment_mode = 'gene'
+                raise IOError("Cannot parse count matrix.  Make sure it is .txt, .xls, or .xlsx")
         else:
-            raise IOError('Please specify whether or not to perform alignment.')   
-        
-        #Lab specific files
-        if yml['Lab'].lower() == 'other':
-            exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
-            exp.genome_indicies['STAR'] = yml['STAR_index']
-            exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
-            exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
-            exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
-        elif yml['Lab'].lower() == 'nimer':
-            exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
-            if exp.genome == 'mm10':
-                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
-                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
-                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
-                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
-            elif exp.genome == 'hg38':
-                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
-                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
-                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
-                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
-            elif exp.genome == 'hg19':
-                exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
-                exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
-                exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
-                exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
-     
-        #GC_normalizaton
-        if yml['Tasks']['GC_Normalization']:
-            exp.gc_norm = True
-        else:
-            exp.tasks_complete.append('GC')
+            raise IOError("Count Matrix Not Found.")
+    elif yml['Tasks']['Align'] == True:
+        #Alignment mode. Default is transcript.
+        if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
+            exp.alignment_mode = 'gene'
+    else:
+        raise IOError('Please specify whether or not to perform alignment.')   
+    
+    #Lab specific files
+    if yml['Lab'].lower() == 'other':
+        exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
+        exp.genome_indicies['STAR'] = yml['STAR_index']
+        exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
+        exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
+        exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
+    elif yml['Lab'].lower() == 'nimer':
+        exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
+        if exp.genome == 'mm10':
+            exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
+            exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
+            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
+            exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
+        elif exp.genome == 'hg38':
+            exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
+            exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
+            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
+            exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
+        elif exp.genome == 'hg19':
+            exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
+            exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
+            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
+            exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
+ 
+    #GC_normalizaton
+    if yml['Tasks']['GC_Normalization']:
+        exp.gc_norm = True
+    else:
+        exp.tasks_complete.append('GC')
 
-        #Support Files:
-        if yml['Lab'].lower() == 'nimer':
-            exp.genome_indicies['ERCC_Mix'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/cms_095046.txt'
-            if exp.genome == 'mm10':
-                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/mm10_GC_Content.txt'
-            elif exp.genome == 'hg38':
-                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
-            elif exp.genome == 'hg19':
-                exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
-        elif yml['Lab'].lower() == 'other':
-            exp.genome_indicies['ERCC_Mix'] = yml['ERCC_Mix_file']
-            exp.genome_indicies['GC_Content'] = yml['GC_Content_file']
+    #Support Files:
+    if yml['Lab'].lower() == 'nimer':
+        exp.genome_indicies['ERCC_Mix'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/cms_095046.txt'
+        if exp.genome == 'mm10':
+            exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/mm10_GC_Content.txt'
+        elif exp.genome == 'hg38':
+            exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
+        elif exp.genome == 'hg19':
+            exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
+    elif yml['Lab'].lower() == 'other':
+        exp.genome_indicies['ERCC_Mix'] = yml['ERCC_Mix_file']
+        exp.genome_indicies['GC_Content'] = yml['GC_Content_file']
 
-        #No DE option
-        if yml['Tasks']['Differential_Expression'] == False:
-            exp.tasks_complete = exp.tasks_complete + ['GC','DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA','PCA']
-            print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
+    #No DE option
+    if yml['Tasks']['Differential_Expression'] == False:
+        exp.tasks_complete = exp.tasks_complete + ['GC','DESeq2','Sleuth','Sigs','Heatmaps','GO_enrich','GSEA','PCA']
+        print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
-        #Spike
-        if yml['ERCC_spike']:
-            exp.spike = True
-            if 'Stage' in exp.tasks_complete:
-                if yml['Fastq_directory'][-1] != '/':
-                    yml['Fastq_directory'] = yml['Fastq_directory'] + '/'
-                if os.path.isdir(yml['Fastq_directory']):
-                    exp.fastq_folder=yml['Fastq_directory']
-                else:
-                    raise IOError("Can't Find Fastq Folder.")
-
-        if (yml['Normalization'].lower() == 'ercc') and (yml['Tasks']['Align'] == False):
-            spike_matrix_loc = yml['Spike_matrix']
-            if os.path.exists(spike_matrix_loc):
-                print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
-                if spike_matrix_loc.split('.')[-1] == 'txt':
-                    exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
-                elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
-                    exp.spike_counts = pd.read_excel(spike_matrix_loc)
-                else:
-                    raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
-            else:
-                raise IOError("Spike Count Matrix Not Found. ")
-
-        #Fastq Folder
-        if 'Stage' not in exp.tasks_complete:
+    #Spike
+    if yml['ERCC_spike']:
+        exp.spike = True
+        if 'Stage' in exp.tasks_complete:
             if yml['Fastq_directory'][-1] != '/':
-                yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
+                yml['Fastq_directory'] = yml['Fastq_directory'] + '/'
             if os.path.isdir(yml['Fastq_directory']):
                 exp.fastq_folder=yml['Fastq_directory']
             else:
                 raise IOError("Can't Find Fastq Folder.")
-        
-        #Hard clip
-        if exp.trim != [0,0]:
-            exp.trim = yml['trim']
 
-        #Project
-        if yml['Lab'].lower()=='nimer':
-            exp.project = '-P nimerlab'
-        elif yml['Lab'].lower() == 'other':
-            if len(yml['Pegasus_Project']) == 0:
-                exp.project = ''
+    if (yml['Normalization'].lower() == 'ercc') and (yml['Tasks']['Align'] == False):
+        spike_matrix_loc = yml['Spike_matrix']
+        if os.path.exists(spike_matrix_loc):
+            print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
+            if spike_matrix_loc.split('.')[-1] == 'txt':
+                exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
+            elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
+                exp.spike_counts = pd.read_excel(spike_matrix_loc)
             else:
-                exp.project = '-P ' + yml['Pegasus_Project']
-        
-        #Counts
-        if not 0 < yml['Total_sample_number'] < 33:
-            raise ValueError("This pipeline is only set up to handle up to 32 samples.")
+                raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
         else:
-            exp.sample_number = yml['Total_sample_number']
-            print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
-        
-        #Sample Names
-        count = 1
-        for key,name in yml['Samples'].items():
-            if count <= exp.sample_number:
-                exp.samples[key]=name
-                count += 1
-            else:
-                break
-        print("Samples: ", file=open(exp.log_file, 'a'))
-        for number,sample in exp.samples.items():
-            print('{number}: {sample}'.format(number=number,sample=sample), file=open(exp.log_file, 'a'))
-        
-        #Differential Expression Groups
-        if yml['Tasks']['Differential_Expression']:
-            for key, item in yml['Groups'].items():
-                if bool(item):
-                    exp.de_groups[key] = [exp.samples[int(x)] for x in item.split(',')]
-                
-            print("Parsing experimental design for differential expression...\n", file=open(exp.log_file, 'a'))
-            
-            #Normalization method
-            if yml['Normalization'].lower() == 'ercc':
-                exp.norm = 'ERCC' 
-                print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
-            elif yml['Normalization'].lower() == 'empirical':
-                print('Normalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
-                exp.norm = 'empirical'
-            elif yml['Normalization'].lower() == 'median-ratios':
-                print('Normalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
-            else:
-                print("I don't know the " + yml['Normalization'] + ' normalization method.  Using default median-ratios.'+ '\n', file=open(exp.log_file, 'a'))
-        
-            for key, comparison in yml['Comparisons'].items():
-                if bool(comparison):
+            raise IOError("Spike Count Matrix Not Found. ")
 
-                    #determine comparison strategy for DESeq2
-                    exp_groups = comparison.split('v')[0]
-                    if len(exp_groups.split('-')) == 1:
-                        exp_group_type = 'simple'
-                    elif len(exp_groups.split('-')) == 2:
-                        Exp1, Exp2 = exp_groups.split('-')[0], exp_groups.split('-')[1]
-                        exp_group_type = 'compensation'
-                    else:
-                        raise ValueError("Cannot process {}. Check formating for E1 or E1-E2. Or too many groups for current pipline.".format(key))
-                    
-                    cont_groups = comparison.split('v')[1]
-                    if len(cont_groups.split('-')) == 1:
-                        cont_group_type = 'simple'
-                    elif len(cont_groups.split('-'))== 2:
-                        Cont1,Cont2 = cont_groups.split('-')[0], cont_groups.split('-')[1]
-                        cont_group_type = 'compensation'
-                    else:
-                        raise ValueError("Cannot process {}. Check formating for C1 or C1-C2. Or too man comparisons.".format(key))
+    #Fastq Folder
+    if 'Stage' not in exp.tasks_complete:
+        if yml['Fastq_directory'][-1] != '/':
+            yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
+        if os.path.isdir(yml['Fastq_directory']):
+            exp.fastq_folder=yml['Fastq_directory']
+        else:
+            raise IOError("Can't Find Fastq Folder.")
+    
+    #Hard clip
+    if exp.trim != [0,0]:
+        exp.trim = yml['trim']
+
+    #Project
+    if yml['Lab'].lower()=='nimer':
+        exp.project = '-P nimerlab'
+    elif yml['Lab'].lower() == 'other':
+        if len(yml['Pegasus_Project']) == 0:
+            exp.project = ''
+        else:
+            exp.project = '-P ' + yml['Pegasus_Project']
+    
+    #Counts
+    if not 0 < yml['Total_sample_number'] < 33:
+        raise ValueError("This pipeline is only set up to handle up to 32 samples.")
+    else:
+        exp.sample_number = yml['Total_sample_number']
+        print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
+    
+    #Sample Names
+    count = 1
+    for key,name in yml['Samples'].items():
+        if count <= exp.sample_number:
+            exp.samples[key]=name
+            count += 1
+        else:
+            break
+    print("Samples: ", file=open(exp.log_file, 'a'))
+    for number,sample in exp.samples.items():
+        print('{number}: {sample}'.format(number=number,sample=sample), file=open(exp.log_file, 'a'))
+    
+    #Differential Expression Groups
+    if yml['Tasks']['Differential_Expression']:
+        for key, item in yml['Groups'].items():
+            if bool(item):
+                exp.de_groups[key] = [exp.samples[int(x)] for x in item.split(',')]
+            
+        print("Parsing experimental design for differential expression...\n", file=open(exp.log_file, 'a'))
+        
+        #Normalization method
+        if yml['Normalization'].lower() == 'ercc':
+            exp.norm = 'ERCC' 
+            print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
+        elif yml['Normalization'].lower() == 'empirical':
+            print('Normalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
+            exp.norm = 'empirical'
+        elif yml['Normalization'].lower() == 'median-ratios':
+            print('Normalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
+        else:
+            print("I don't know the " + yml['Normalization'] + ' normalization method.  Using default median-ratios.'+ '\n', file=open(exp.log_file, 'a'))
+    
+        for key, comparison in yml['Comparisons'].items():
+            if bool(comparison):
+
+                #determine comparison strategy for DESeq2
+                exp_groups = comparison.split('v')[0]
+                if len(exp_groups.split('-')) == 1:
+                    exp_group_type = 'simple'
+                elif len(exp_groups.split('-')) == 2:
+                    Exp1, Exp2 = exp_groups.split('-')[0], exp_groups.split('-')[1]
+                    exp_group_type = 'compensation'
+                else:
+                    raise ValueError("Cannot process {}. Check formating for E1 or E1-E2. Or too many groups for current pipline.".format(key))
                 
-                    #Check comparison for group consistency.
-                    error = "Can't make a comparison with an unspecified group. Make sure your Comparisons match your Groups for DE"
-                    groups = list(exp.de_groups.keys())
-                    
-                    exp.designs[key]={}
-                    exp.designs[key]['all_samples']=[]
-                    exp.designs[key]['main_comparison']=[]
-                    exp.designs[key]['compensation']=[]
-                    
-                    if exp_group_type == 'simple':
-                        if exp_groups not in groups:
-                            raise ValueError(error)
-                        else:
-                            exp.designs[key]['all_samples'].extend(exp.de_groups[exp_groups])
-                            exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[exp_groups]))
-                            if cont_group_type == 'simple':
-                                if cont_groups not in groups:
-                                    raise ValueError(error)
-                                else:
-                                    exp.designs[key]['all_samples'].extend(exp.de_groups[cont_groups])
-                                    exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[cont_groups]))
-                            elif cont_group_type == 'compensation':
-                                raise ValueError("Cannot batch compensate 1 Experimental group with 2 Control groups")
-                            else:
+                cont_groups = comparison.split('v')[1]
+                if len(cont_groups.split('-')) == 1:
+                    cont_group_type = 'simple'
+                elif len(cont_groups.split('-'))== 2:
+                    Cont1,Cont2 = cont_groups.split('-')[0], cont_groups.split('-')[1]
+                    cont_group_type = 'compensation'
+                else:
+                    raise ValueError("Cannot process {}. Check formating for C1 or C1-C2. Or too man comparisons.".format(key))
+            
+                #Check comparison for group consistency.
+                error = "Can't make a comparison with an unspecified group. Make sure your Comparisons match your Groups for DE"
+                groups = list(exp.de_groups.keys())
+                
+                exp.designs[key]={}
+                exp.designs[key]['all_samples']=[]
+                exp.designs[key]['main_comparison']=[]
+                exp.designs[key]['compensation']=[]
+                
+                if exp_group_type == 'simple':
+                    if exp_groups not in groups:
+                        raise ValueError(error)
+                    else:
+                        exp.designs[key]['all_samples'].extend(exp.de_groups[exp_groups])
+                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[exp_groups]))
+                        if cont_group_type == 'simple':
+                            if cont_groups not in groups:
                                 raise ValueError(error)
-                            
-                            exp.designs[key]['design'] = "~main_comparison"
-                            exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
-                                                                        "main_comparison": exp.designs[key]['main_comparison']})
-                         
-                    elif exp_group_type == 'compensation':
-                        if (Exp1 not in groups) or (Exp2 not in groups):
-                            raise ValueError(error)
-                        else:
-                            exp.designs[key]['all_samples'].extend(exp.de_groups[Exp1])
-                            exp.designs[key]['all_samples'].extend(exp.de_groups[Exp2])
-                            exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[Exp1] + exp.de_groups[Exp2]))
-                            if cont_group_type == 'simple':
-                                raise ValueError("Cannot batch compensate 2 Experimental groups with 1 Control groups.")
-                            elif cont_group_type == 'compensation':
-                                if (Cont1 not in groups) or (Cont2 not in groups):
-                                    raise ValueError(error)
-                                else:
-                                    exp.designs[key]['all_samples'].extend(exp.de_groups[Cont1])
-                                    exp.designs[key]['all_samples'].extend(exp.de_groups[Cont2])
-                                    exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[Cont1] + exp.de_groups[Cont2]))
                             else:
-                                raise ValueError(error)                                     
-                            
-                            exp.designs[key]['compensation'].extend((['Group_1']*len(exp.de_groups[Exp1]) +
-                                                                     ['Group_2']*len(exp.de_groups[Cont1]) +
-                                                                     ['Group_1']*len(exp.de_groups[Exp2]) +
-                                                                     ['Group_2']*len(exp.de_groups[Cont2])))
-                            exp.designs[key]['design'] = "~compensation + main_comparison"
-                            exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
-                                                                       "main_comparison": exp.designs[key]['main_comparison'],
-                                                                       "compensation": exp.designs[key]['compensation']})
+                                exp.designs[key]['all_samples'].extend(exp.de_groups[cont_groups])
+                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[cont_groups]))
+                        elif cont_group_type == 'compensation':
+                            raise ValueError("Cannot batch compensate 1 Experimental group with 2 Control groups")
+                        else:
+                            raise ValueError(error)
+                        
+                        exp.designs[key]['design'] = "~main_comparison"
+                        exp.designs[key]['colData'] = pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
+                                                                    "main_comparison": exp.designs[key]['main_comparison']})
+                     
+                elif exp_group_type == 'compensation':
+                    if (Exp1 not in groups) or (Exp2 not in groups):
+                        raise ValueError(error)
                     else:
-                        raise ValueError(error)  
-
-            for name,items in exp.designs.items():
-                print('\n{}:'.format(name), file=open(exp.log_file,'a'))
-                print(str(items['colData']), file=open(exp.log_file,'a'))
-
-        #Initialize DE sig overlaps
-        for comparison, design in exp.designs.items():
-            exp.de_sig_overlap[comparison] = (True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False)
-            
-        #Overlaps
-        if yml['Tasks']['Overlap_of_genes'] == False:
-            exp.tasks_complete.append('Overlaps')
-            print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
-        elif (yml['Tasks']['Differential_Expression'] == False) and yml['Tasks']['Overlap_of_genes']:
-            gene_file=yml['Sig_matrix']
-            if os.path.exists(gene_file):
-                print("Gene lists found at {}".format(gene_file), file=open(exp.log_file,'a'))
-                if gene_file.split('.')[-1] == 'txt':
-                    gene_fileDF = pd.read_csv(gene_file, header= 0, index_col=None, sep="\t")
-                elif (gene_file.split('.')[-1] == 'xls') or (gene_file.split('.')[-1] == 'xlsx'):
-                    gene_fileDF = pd.read_excel(gene_file)
+                        exp.designs[key]['all_samples'].extend(exp.de_groups[Exp1])
+                        exp.designs[key]['all_samples'].extend(exp.de_groups[Exp2])
+                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[Exp1] + exp.de_groups[Exp2]))
+                        if cont_group_type == 'simple':
+                            raise ValueError("Cannot batch compensate 2 Experimental groups with 1 Control groups.")
+                        elif cont_group_type == 'compensation':
+                            if (Cont1 not in groups) or (Cont2 not in groups):
+                                raise ValueError(error)
+                            else:
+                                exp.designs[key]['all_samples'].extend(exp.de_groups[Cont1])
+                                exp.designs[key]['all_samples'].extend(exp.de_groups[Cont2])
+                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[Cont1] + exp.de_groups[Cont2]))
+                        else:
+                            raise ValueError(error)                                     
+                        
+                        exp.designs[key]['compensation'].extend((['Group_1']*len(exp.de_groups[Exp1]) +
+                                                                 ['Group_2']*len(exp.de_groups[Cont1]) +
+                                                                 ['Group_1']*len(exp.de_groups[Exp2]) +
+                                                                 ['Group_2']*len(exp.de_groups[Cont2])))
+                        exp.designs[key]['design'] = "~compensation + main_comparison"
+                        exp.designs[key]['colData']= pd.DataFrame({"sample_names": exp.designs[key]['all_samples'],
+                                                                   "main_comparison": exp.designs[key]['main_comparison'],
+                                                                   "compensation": exp.designs[key]['compensation']})
                 else:
-                    raise IOError("Cannot parse gene lists file.  Make sure it is .txt, .xls, or .xlsx")
-                
-                overlap_number = 1
-                count = 0
-                if len(gene_fileDF.columns)%2 == 0:
-                    for x in range(len(gene_fileDF.columns)/2):
-                        overlap_name='Gene_Overlap_{}'.format(str(overlap_number))
-                        list_1 = gene_fileDF.columns[count]
-                        list_2 = gene_fileDF.columns[count + 1]
-                        exp.gene_lists[overlap_name] = {}
-                        exp.gene_lists[overlap_name][list_1] = set(gene_fileDF[list_1].tolist())
-                        exp.gene_lists[overlap_name][list_2] = set(gene_fileDF[list_2].tolist())
-                        count += 2
-                        overlap_number = count/2
-                    print('\nPerforming {} overlaps.'.format(str(count/2)), file=open(exp.log_file,'a'))
-                else:
-                    raise IOError("Cannot parse gene lists file. Requires an even number of gene lists.")
+                    raise ValueError(error)  
 
-            else:
-                raise IOError("Gene List not found. If not doing differential expression, you need to provide an list of genes for overlaps.", file=opne(exp.log_file, 'a'))
-        #DE Overlaps
-        elif yml['Tasks']['Overlap_of_genes']:
-            for key, item in yml['Overlaps'].items():
-                if bool(item):   
-                    exp.overlaps[key] = item.split('v')
-            print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
-            if str(len(list(exp.overlaps.keys()))) != 0:
-                print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
-        else:
-            print("Can't process design for overlaps.  Continuing without overlap analyses.", file=open(exp.log_file, 'a'))
-            exp.tasks_complete.append('Overlaps')
+        for name,items in exp.designs.items():
+            print('\n{}:'.format(name), file=open(exp.log_file,'a'))
+            print(str(items['colData']), file=open(exp.log_file,'a'))
 
-        #Initialized Process Complete List
-        exp.tasks_complete.append('Parsed')
-
-        print('Experiment file parsed: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    #Initialize DE sig overlaps
+    for comparison, design in exp.designs.items():
+        exp.de_sig_overlap[comparison] = (True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False)
         
-        return exp
+    #Overlaps
+    if yml['Tasks']['Overlap_of_genes'] == False:
+        exp.tasks_complete.append('Overlaps')
+        print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
+    elif (yml['Tasks']['Differential_Expression'] == False) and yml['Tasks']['Overlap_of_genes']:
+        gene_file=yml['Sig_matrix']
+        if os.path.exists(gene_file):
+            print("Gene lists found at {}".format(gene_file), file=open(exp.log_file,'a'))
+            if gene_file.split('.')[-1] == 'txt':
+                gene_fileDF = pd.read_csv(gene_file, header= 0, index_col=None, sep="\t")
+            elif (gene_file.split('.')[-1] == 'xls') or (gene_file.split('.')[-1] == 'xlsx'):
+                gene_fileDF = pd.read_excel(gene_file)
+            else:
+                raise IOError("Cannot parse gene lists file.  Make sure it is .txt, .xls, or .xlsx")
+            
+            overlap_number = 1
+            count = 0
+            if len(gene_fileDF.columns)%2 == 0:
+                for x in range(len(gene_fileDF.columns)/2):
+                    overlap_name='Gene_Overlap_{}'.format(str(overlap_number))
+                    list_1 = gene_fileDF.columns[count]
+                    list_2 = gene_fileDF.columns[count + 1]
+                    exp.gene_lists[overlap_name] = {}
+                    exp.gene_lists[overlap_name][list_1] = set(gene_fileDF[list_1].tolist())
+                    exp.gene_lists[overlap_name][list_2] = set(gene_fileDF[list_2].tolist())
+                    count += 2
+                    overlap_number = count/2
+                print('\nPerforming {} overlaps.'.format(str(count/2)), file=open(exp.log_file,'a'))
+            else:
+                raise IOError("Cannot parse gene lists file. Requires an even number of gene lists.")
+
+        else:
+            raise IOError("Gene List not found. If not doing differential expression, you need to provide an list of genes for overlaps.", file=opne(exp.log_file, 'a'))
+    #DE Overlaps
+    elif yml['Tasks']['Overlap_of_genes']:
+        for key, item in yml['Overlaps'].items():
+            if bool(item):   
+                exp.overlaps[key] = item.split('v')
+        print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
+        if str(len(list(exp.overlaps.keys()))) != 0:
+            print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
+    else:
+        print("Can't process design for overlaps.  Continuing without overlap analyses.", file=open(exp.log_file, 'a'))
+        exp.tasks_complete.append('Overlaps')
+
+    #Initialized Process Complete List
+    exp.tasks_complete.append('Parsed')
+
+    print('Experiment file parsed: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    
+    return exp
 
 def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, threads=1):
     '''
