@@ -654,7 +654,7 @@ def fastq_screen(exp):
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
     exp.tasks_complete.append('Fastq_screen')
-    print('Screening complete: {:%Y-%m-%d %H:%M:%S}\n'.format(.datetime.now()), file=open(exp.log_file, 'a'))
+    print('Screening complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     return exp
 
