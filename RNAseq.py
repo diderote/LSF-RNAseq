@@ -1218,7 +1218,6 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
 
     '''
     Performs normalization method for removing unwanted variance across samples using controls sequences.
-    perform lrt deseq2 after RUVseq.
 
     Inputs
     ------
@@ -1311,11 +1310,10 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         if design == '~main_comparison':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + main_comparison'))
             RUV_dds = deseq.DESeq(RUV_dds)
-        #Differential expression (LRT DESeq2) to account for scaled variances between samples
+        #Differential expression (Wald DESeq2) to account for scaled variances between samples
         elif design == '~compensation + main_comparison':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + compensation + main_comparison'))
             RUV_dds = deseq.DESeq(RUV_dds)
-            RUV_dds = deseq.DESeq(RUV_dds, test='LRT', reduced = ro.Formula("~W_1 + compensation"))
         elif comparison == 'ALL':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1'))
 
@@ -1325,9 +1323,9 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         counts_df.columns = RUV_data.drop(columns='name').columns
 
         if comparison == 'ALL':
-            plot_PCA(counts = counts_df, colData= [], out_dir=plot_dir, name='{}_post-()_RUV_raw_counts_PCA'.format(comparison, norm_type))
+            plot_PCA(counts = counts_df.dropna(), colData= [], out_dir=plot_dir, name='{}_post-()_RUV_raw_counts_PCA'.format(comparison, norm_type))
         else:
-            plot_PCA(counts = counts_df, colData= colData, out_dir=plot_dir, name='{}_post-{}_RUV_raw_counts_PCA'.format(comparison, norm_type))
+            plot_PCA(counts = counts_df.dropna(), colData= colData, out_dir=plot_dir, name='{}_post-{}_RUV_raw_counts_PCA'.format(comparison, norm_type))
 
         if de:
             #extract results and relabel samples and genes
@@ -1383,7 +1381,7 @@ def DESeq2(exp):
         count_matrix = exp.gc_count_matrix
     else:
         if exp.alignment_mode == 'gene':
-            print('Using STAR-HTSEQ counts for differential expression.\n', file=open(exp.log_file,'a'))
+            print('Using STAR counts for differential expression.\n', file=open(exp.log_file,'a'))
         else:
             print('Using rounded RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
         count_matrix = exp.count_matrix
@@ -1394,10 +1392,10 @@ def DESeq2(exp):
         print('Beginning {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         colData=designs['colData']
         design=ro.Formula(designs['design'])
-        data=count_matrix[designs['all_samples']]
+        data=round(count_matrix[designs['all_samples']])
 
         # filtering for genes with more than 5 counts in two samples
-        data = round(data[data[data > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
+        #data = round(data[data[data > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
 
         dds[comparison] = deseq.DESeqDataSetFromMatrix(countData = data.values,
                                                        colData=colData,
@@ -1512,7 +1510,7 @@ def DESeq2(exp):
     #Variance Stabalized count matrix for all samples.
     colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A']*exp.sample_number})
     design=ro.Formula("~1")
-    count_matrix = round(count_matrix[count_matrix[count_matrix > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
+    #count_matrix = round(count_matrix[count_matrix[count_matrix > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
     dds_all = deseq.DESeqDataSetFromMatrix(countData = count_matrix.values,
                                            colData=colData,
                                            design=design
@@ -1885,13 +1883,6 @@ def GSEA(exp):
 
         results=exp.de_results['DE2_{}'.format(comparison)].dropna()
 
-        #generating ranked list based on log2foldchange and pvalue
-        results['ranked'] = results.log2FoldChange * results.pvalue.apply(lambda x: -math.log10(x))
-        results.sort_values(by='ranked', ascending=False, inplace=True)
-        results.index = results.gene_name
-        ranked = results.ranked.dropna()
-        ranked.to_csv('{}/{}_LFC-L10P.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
-
         #generate ranked list based on shrunken log2foldchange
         lfc = exp.de_results['shrunkenLFC_' + comparison].dropna()
         lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
@@ -1899,18 +1890,12 @@ def GSEA(exp):
         lfc = lfc.log2FoldChange.dropna()
         lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
-        #double check this is the wald statistic before using for ranking
-        if (design['design'] == '~compensation + main_comparison') and (exp.norm.lower() != 'median-ratios'):
-            print('Ranking by log2(FoldChange) * -log10(pvalue) reflecting direction, magnitude and significance per gene.', file=open(exp.log_file,'a'))
-            rnk = '{}_LFC-L10P.rnk'.format(comparison)
-            rnk_name = 'LFC-L10P'
-        else:
-            print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
-            results.sort_values(by='ranked', ascending=False, inplace=True)
-            results = results.stat.dropna()
-            ranked.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
-            rnk = '{}_stat.rnk'.format(comparison)
-            rnk_name = 'wald'
+        print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
+        results.sort_values(by='ranked', ascending=False, inplace=True)
+        results = results.stat.dropna()
+        ranked.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
+        rnk = '{}_stat.rnk'.format(comparison)
+        rnk_name = 'wald'
 
         rnk2 = '{}_shrunkenLFC.rnk'.format(comparison)
 
