@@ -164,10 +164,6 @@ def parse_yaml():
             exp.genome = yml['Genome'].lower()
             print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
-        #Alignment mode. Default is transcript.
-        if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
-            exp.alignment_mode = 'gene'
-
         #Sequencing type
         if yml['Sequencing_type'].lower() not in ['paired','single']:
             raise ValueError("Must specify whether sequence is paired or single end.")
@@ -194,7 +190,9 @@ def parse_yaml():
             else:
                 raise IOError("Count Matrix Not Found.")
         elif yml['Tasks']['Align'] == True:
-            pass
+            #Alignment mode. Default is transcript.
+            if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
+                exp.alignment_mode = 'gene'
         else:
             raise IOError('Please specify whether or not to perform alignment.')   
         
