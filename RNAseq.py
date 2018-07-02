@@ -1808,7 +1808,7 @@ def clustermap(exp):
         else:
             CM15 = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM15.savefig('{}{}_1.5FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
-            CM15.savefig('{}{}_1.5FC_Heatmap.svg'.format(oout_dir,comparison), dpi=300)
+            CM15.savefig('{}{}_1.5FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
         sigAll = list(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
         if len(sigAll) == 0:
