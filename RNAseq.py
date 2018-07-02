@@ -1738,7 +1738,7 @@ def sigs(exp):
             exp.sig_lists[comparison]['All_DN'] = DE2_DN & SL_sig
 
         else:
-            print('Only using significant genes called from STAR/RSEM/DESeq2 for {} analyses.'.format(comparison), file=open(exp.log_file, 'a'))
+            print('Only using significant genes called from DESeq2 for {} analyses.'.format(comparison), file=open(exp.log_file, 'a'))
         
             DE_results=exp.de_results['DE2_{}'.format(comparison)]
 
@@ -1879,7 +1879,7 @@ def GSEA(exp):
     for comparison,design in exp.designs.items():
         #check if comparison already done.
 
-        print('GSEA for {comparison} found in {out}/DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
+        print('GSEA for {comparison} found in {out}DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
         out_compare = '{}/{}'.format(out_dir,comparison)
         os.makedirs(out_compare, exist_ok=True)
 
@@ -1895,10 +1895,9 @@ def GSEA(exp):
         print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
         results.sort_values(by='ranked', ascending=False, inplace=True)
         results = results.stat.dropna()
-        ranked.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
+        results.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
         rnk = '{}_stat.rnk'.format(comparison)
         rnk_name = 'wald'
-
         rnk2 = '{}_shrunkenLFC.rnk'.format(comparison)
 
         os.chdir(out_compare)
