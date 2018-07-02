@@ -122,16 +122,17 @@ def parse_yaml():
     filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
     
     if os.path.isfile(filename):
-        with open(filename, 'rb') as experiment:
-            exp = pickle.load(experiment)
-        os.remove(filename)
+        if yml['Restart'] == False:
+            with open(filename, 'rb') as experiment:
+                exp = pickle.load(experiment)
+            os.remove(filename)
 
-        #set new date
-        exp.date = format(datetime.now(), '%Y-%m-%d') 
+            #set new date
+            exp.date = format(datetime.now(), '%Y-%m-%d') 
 
-        print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format(datetime.now()), file=open(exp.log_file,'a'))
+            print('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format(datetime.now()), file=open(exp.log_file,'a'))
 
-        return exp 
+            return exp 
     
     else: 
         #Passing paramters to new object

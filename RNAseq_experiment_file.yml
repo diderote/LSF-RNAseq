@@ -1,5 +1,6 @@
 #### Vestion0.4 #####
 Name: 'Experiment_Name' #Experiment name
+Restart: False # if True, start over even if an incomplete pickle file is found in in the staging folder. (Default: False)
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
 #### Experimental Setup ####
 Total_sample_number: 12 #Total number (max 22)
