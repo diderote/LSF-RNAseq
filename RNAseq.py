@@ -1897,6 +1897,7 @@ def GSEA(exp):
         print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
         results.sort_values(by='stat', ascending=False, inplace=True)
         results = results.stat.dropna()
+        results.index = results.gene_name
         results.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
         
         rnk = '{}_stat.rnk'.format(comparison)
