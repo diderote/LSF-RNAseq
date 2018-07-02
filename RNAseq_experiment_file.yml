@@ -38,7 +38,7 @@ Samples:
   31: 'Name' #
   32: 'Name' #
 #### Alignment Options ####
-ERCC_spike: # yes for spike-in counting.
+ERCC_spike: # yes to align ERCC spike-ins using STAR.
 Genome: #hg38, hg19 or mm10
 Fastq_directory: /path/to/fastq/
 Sequencing_type: paired #'paired' or 'single' 

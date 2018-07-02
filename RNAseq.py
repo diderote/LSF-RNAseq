@@ -29,7 +29,6 @@ from datetime import datetime
 import subprocess as sub
 import pandas as pd
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib_venn import venn2, venn2_circles
@@ -816,8 +815,6 @@ def spike(exp):
             exp.spike = False
 
         if exp.spike:
-            matplotlib.use('agg')
-
             # Prep spike counts for plot (only if Nimer)
             if exp.genome_indicies['ERCC_Mix'] != None:
                 # Filtering for counts with more than 5 counts in two samples
@@ -1383,7 +1380,7 @@ def DESeq2(exp):
             print('Using STAR counts for differential expression.\n', file=open(exp.log_file,'a'))
         else:
             print('Using rounded RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
-        count_matrix = exp.count_matrix
+        count_matrix = round(exp.count_matrix)
     
     dds={}
     
@@ -1391,7 +1388,7 @@ def DESeq2(exp):
         print('Beginning {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
         colData=designs['colData']
         design=ro.Formula(designs['design'])
-        data=round(count_matrix[designs['all_samples']])
+        data=count_matrix[designs['all_samples']]
 
         # filtering for genes with more than 5 counts in two samples
         #data = round(data[data[data > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
@@ -1543,7 +1540,7 @@ def DESeq2(exp):
     
     return exp
 
-def PCA(exp):
+def Principal_Component_Analysis(exp):
 
     out_dir = exp.scratch + 'PCA/'
     os.makedirs(out_dir, exist_ok=True)
@@ -2199,7 +2196,7 @@ def diff_exp(exp):
             exp = DESeq2(exp)
         if 'PCA' not in exp.tasks_complete:
             pipe_stage = 'PCA'
-            exp = PCA(exp)
+            exp = Principal_Component_Analysis(exp)
         if 'Sleuth' not in exp.tasks_complete:
             pipe_stage = 'Sleuth'
             exp = Sleuth(exp)
@@ -2237,6 +2234,6 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
-    matplotlib.use('agg')
+    plt.switch_backend('agg')
     pipeline()
 
