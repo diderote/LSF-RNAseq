@@ -115,7 +115,7 @@ def parse_yaml():
             exp.scratch = '{}{}/'.format(yml['Scratch_folder'],yml['Name'])
             os.makedirs(exp.scratch, exist_ok=True)
         except:
-            raise Error('Error making scratch/staging directory', file=open(exp.log_file,'a'))
+            raise RaiseError('Error making scratch/staging directory', file=open(exp.log_file,'a'))
     
     #check whether experiment has been attempted
     exp.name = yml['Name']   
@@ -960,12 +960,17 @@ def star(exp):
             counts = pd.DataFrame(index=pd.read_csv(counts_glob[1], header=None, index_col=0, sep="\t").index)
         
             for number,sample in exp.samples.items():
-                exp.counts[sample] = pd.read_csv('{loc}{sample}_ReadsPerGene.out.tab'.format(loc=out_dir, sample=sample),header=None, index_col=0, sep="\t")[[3]]
+                exp.counts[sample] = pd.read_csv('{}{}_ReadsPerGene.out.tab'.format(out_dir,sample),header=None, index_col=0, sep="\t")[[3]]
             exp.count_matrix = counts.iloc[4:,:]
-            exp.count_matrix.to_csv('{loc}STAR.count.matrix.txt'.format(loc=out_dir), header=True, index=True, sep="\t")
+            exp.count_matrix.to_csv('{}STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+    except:
+        print('Error generating count matrix.', file=open(exp.log_file,'a'))
+        raise RaiseError('Error generating STARcount matrix. Make sure the file is not empty.')
 
     exp.tasks_complete.append('STAR')
     print('STAR alignemnt and count generation complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+
+    return exp
 
 def rsem(exp):
     '''
@@ -1300,7 +1305,7 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             print('\nERCC normalization complete for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(log, 'a'))
 
         else:
-            RaiseError('RUV() takes only "ercc" or "empirical" as options.')
+            raise RaiseError('RUV() takes only "ercc" or "empirical" as options.')
 
         #Differential expression (Wald DESeq2) to account for scaled variances between samples
         if design == '~main_comparison':
@@ -1371,7 +1376,7 @@ def DESeq2(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     if exp.gc_norm:
-        if exp.alignment_mode = 'gene':
+        if exp.alignment_mode == 'gene':
             print('Using GC normalized counts for differential expression.\n', file=open(exp.log_file,'a'))
         else:
             print('Using GC normalized RSEM expected counts for differential expression.\n', file=open(exp.log_file,'a'))
@@ -1476,7 +1481,7 @@ def DESeq2(exp):
                                                                                                                                         de=True
                                                                                                                                        )
         else:
-            RaiseError('Can only use "median-ratios", "ercc", or "empirical" for normalization of DESeq2.')
+            raise RaiseError('Can only use "median-ratios", "ercc", or "empirical" for normalization of DESeq2.')
 
         #DESeq2 results
         exp.de_results['DE2_' + comparison].sort_values(by='padj', ascending=True, inplace=True)
