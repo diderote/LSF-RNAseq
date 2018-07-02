@@ -848,7 +848,8 @@ def spike(exp):
                 plt.title("ERCC Mix 1 Counts per Sample")
                 sns.despine()
                 M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
-                plt.close()
+                if __name__ == "__main__":
+                    plt.close()
 
                 sns.set(context='paper', font_scale=2, style='white')
                 M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
@@ -857,7 +858,8 @@ def spike(exp):
                 plt.title("ERCC Mix 2 Counts per Sample")
                 sns.despine()
                 M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
-                plt.close()
+                if __name__ == "__main__":
+                    plt.close()
 
             else:
                 print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
@@ -1132,7 +1134,7 @@ def kallisto(exp):
 
 def plot_PCA(counts, colData, out_dir, name):
     try:
-        to_remove=['gene_name','id']
+        to_remove=['gene_name','id', 'name']
         for x in to_remove:
             if x in list(counts.columns):
                 counts = counts.drop(x, axis=1)
@@ -1155,8 +1157,8 @@ def plot_PCA(counts, colData, out_dir, name):
             red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
             blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
 
-        ax.set_xlabel('PCA Component 1: {:%} variance'.format(var=int(pca_score[0]))) 
-        ax.set_ylabel('PCA Component 2: {:%} varinace'.format(var=int(pca_score[1])))
+        ax.set_xlabel('PCA Component 1: {:0.1%} variance'.format(pca_score[0]))
+        ax.set_ylabel('PCA Component 2: {:0.1%} varinace'.format(pca_score[1]))
 
 
         for i,sample in enumerate(bpca_df['name'].tolist()):
@@ -1169,9 +1171,13 @@ def plot_PCA(counts, colData, out_dir, name):
         
         sns.despine()
         plt.tight_layout()
-        ax.figure.savefig(out_dir + '{}_PCA.png'.format(name))
-        ax.figure.savefig(out_dir + '{}_PCA.svg'.format(name))
-        plt.close()
+        plt.subplots_adjust(right=0.9, top=.9)
+
+        os.makedirs(out_dir, exist_ok=True)
+        ax.figure.savefig('{}{}_PCA.png'.format(out_dir,name))
+        ax.figure.savefig('{}{}_PCA.svg'.format(out_dir,name))
+        if __name__ == "__main__":
+            plt.close()
     except:
         raise RaiseError('Error during plot_PCA. Fix problem then resubmit with same command to continue from last completed step.')
 
@@ -1697,7 +1703,8 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     plt.tight_layout()
     plt.savefig('{}/{}-Volcano-Plot.png'.format(out_dir,name), dpi=200)
     plt.savefig('{}/{}-Volcano-Plot.svg'.format(out_dir,name), dpi=200)
-    plt.close()
+    if __name__ == "__main__":
+        plt.close()
 
     return
 
@@ -1983,7 +1990,8 @@ def plot_venn2(Series, string_name_of_overlap, folder):
     plt.tight_layout()
     plt.savefig('{}{}-overlap-{:%Y-%m-%d}.svg'.format(folder,string_name_of_overlap, datetime.now()))
     plt.savefig('{}{}-overlap-{:%Y-%m-%d}.png'.format(folder,string_name_of_overlap, datetime.now()), dpi=300)
-    plt.close()
+    if __name__ == "__main__":
+        plt.close()
 
 def overlaps(exp):
     '''
