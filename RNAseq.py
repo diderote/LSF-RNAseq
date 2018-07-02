@@ -285,12 +285,12 @@ def parse_yaml():
 
     #Project
     if yml['Lab'].lower()=='nimer':
-        exp.project = '-P nimerlab'
+        exp.project = 'nimerlab'
     elif yml['Lab'].lower() == 'other':
         if len(yml['Pegasus_Project']) == 0:
             exp.project = ''
         else:
-            exp.project = '-P ' + yml['Pegasus_Project']
+            exp.project = yml['Pegasus_Project']
     
     #Counts
     if not 0 < yml['Total_sample_number'] < 33:
@@ -483,30 +483,30 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     rand_id = str(random.randint(0, 100000))
     str_comd_list =  '\n'.join(command_list)
     cmd = '''
-    #!/bin/bash
+#!/bin/bash
 
-    #BSUB -J JOB_{job_name}_ID_{random_number}
-    #BSUB -R "rusage[mem={mem}]"
-    #BSUB -R "span[ptile={threads}]"
-    #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
-    #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
-    #BSUB -W 120:00
-    #BSUB -n 1
-    #BSUB -q {q}
-    #BSUB -P {project}
+#BSUB -J JOB_{job_name}_ID_{random_number}
+#BSUB -R "rusage[mem={mem}]"
+#BSUB -R "span[ptile={threads}]"
+#BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
+#BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
+#BSUB -W 120:00
+#BSUB -n 1
+#BSUB -q {q}
+#BSUB -P {project}
 
-    {commands_string_list}'''.format(job_name = job_name,
-                                     job_log_folder=job_log_folder,
-                                     job_name_o=job_name,
-                                     job_name_e=job_name,
-                                     commands_string_list=str_comd_list,
-                                     random_number=rand_id,
-                                     rand_id=rand_id,
-                                     q=q,
-                                     mem=mem,
-                                     project=project,
-                                     threads=threads
-                                    )
+{commands_string_list}'''.format(job_name = job_name,
+                                 job_log_folder=job_log_folder,
+                                 job_name_o=job_name,
+                                 job_name_e=job_name,
+                                 commands_string_list=str_comd_list,
+                                 random_number=rand_id,
+                                 rand_id=rand_id,
+                                 q=q,
+                                 mem=mem,
+                                 project=project,
+                                 threads=threads
+                                )
     
     job_path_name = job_log_folder + job_name+'.sh'
     write_job = open(job_path_name, 'w')
@@ -1877,6 +1877,8 @@ def GSEA(exp):
     print('Starting GSEA enrichment.', file=open(exp.log_file, 'a'))
 
     for comparison,design in exp.designs.items():
+        gsea_file='{out}DESeq2/{comparison}/Hallmarks'
+
         #check if comparison already done.
 
         print('GSEA for {comparison} found in {out}DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
@@ -1916,7 +1918,7 @@ def GSEA(exp):
             set_dir='{}/{}'.format(out_compare,name) 
             os.makedirs(set_dir, exist_ok=True)
 
-            command_list = ['module rm python java perl',
+            command_list = ['module rm python java perl share-rpms65',
                             'source activate RNAseq',
                             'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk)
                            ] #for shrunken lfc: 'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
@@ -1937,7 +1939,7 @@ def GSEA(exp):
 
     for comparison,design in exp.designs.items():
         for gset,name in gmts.items():
-            path=glob.glob('{}/{}/{}/*'.format(lout_dir,comparison,name))[0]
+            path=glob.glob('{}/{}/{}/*'.format(out_dir,comparison,name))[0]
             if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
                 os.chdir('{}/{}/{}'.format(out_dir,comparison,name))
                 open('Within each folder click "index.html" for results','w')
