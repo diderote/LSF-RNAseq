@@ -1791,7 +1791,7 @@ def clustermap(exp):
     
     for comparison,design in exp.designs.items():
         vst = exp.de_results['{}_vst'.format(comparison)]
-        vst = vst[vst.sum(axis='columns') > 0]
+        vst = vst[vst.sum(axis='columns') > 5]
         vst['gene_name']=vst.index
         vst['gene_name']=vst.gene_name.apply(lambda x: x.split("_")[1])
 
