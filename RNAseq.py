@@ -1283,7 +1283,6 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             #generate normalization scaling based on unwanted variance from empirical negative controls
             data_set = edaseq.newSeqExpressionSet(RUV_data.drop(columns='name').values, phenoData=colData)
             RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(empirical), k=1)
-            print(pdata(RUVg_set), file=open(log,'a'))
 
             print('\nEmpirical negative control normalization complete for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison,datetime.now()), file=open(log, 'a'))
 
@@ -1303,7 +1302,6 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             #normalize samples based on unwanted variance between ERCC spike in controls
             data_set = edaseq.newSeqExpressionSet(RUV_data.drop(columns='name').values, phenoData=colData)
             RUVg_set = ruvseq.RUVg(x=data_set, cIdx=as_cv(spike_list), k=1)
-            print(pdata(RUVg_set), file=open(log,'a'))
             print('\nERCC normalization complete for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(log, 'a'))
 
         else:
@@ -1798,7 +1796,7 @@ def clustermap(exp):
         if len(sig) == 0:
             print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
-            CM = sns.smap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
+            CM = sns.clustermap(vst[vst.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM.savefig('{}{}_2FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM.savefig('{}{}_2FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
