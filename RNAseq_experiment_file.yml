@@ -1,4 +1,4 @@
-#### Vestion0.4 #####
+#### Vestion0.6 #####
 Name: 'Experiment_Name' #Experiment name
 Restart: False # if True, start over even if an incomplete pickle file is found in in the staging folder. (Default: False)
 Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
@@ -76,4 +76,5 @@ ERCC_STAR_index: /path/to/ERCC/index/folder/name
 ChrNameLength_file: /path/to/chrNameLength/file.txt #tab delimited file with chromosome names and lengths used for indicies.
 ERCC_Mix_file: /path/to/ERCC/Mix/file.txt
 GC_Content_file: /path/to/GC/Content/file.txt
+GSEA_jar: /path/to/GSEA.jar
 Pegasus_Project:

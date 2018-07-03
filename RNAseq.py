@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Nimerlab RNASeq Pipeline v0.5
+Nimerlab RNASeq Pipeline v0.6
 python3/utf-8
 
 Reads an experimetnal design yaml file (Version 0.5).
@@ -40,7 +40,7 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri, r, globalenv, Formula
 import gseapy
 
-version=0.5
+version=0.6
 
 class Experiment(object):
     '''
@@ -205,8 +205,10 @@ def parse_yaml():
         exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
         exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
         exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
+        exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
     elif yml['Lab'].lower() == 'nimer':
         exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
+        exp.genome_indicies['GSEA_jar'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar'
         if exp.genome == 'mm10':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
@@ -2019,8 +2021,8 @@ def GSEA(exp):
 
                 command_list = ['module rm python java perl share-rpms65',
                                 'source activate RNAseq',
-                                'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk=rnk)
-                               ] #for shrunken lfc: 'java -cp /projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(gset=gset,comparison=comparison,name=name,rnk2=rnk2)
+                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
+                               ] #for shrunken lfc: 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
                 exp.job_id.append(send_job(command_list=command_list, 
                                            job_name='{}_{}_GSEA'.format(comparison,gset),

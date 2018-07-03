@@ -12,16 +12,17 @@ This pipline handles processing and analyses for RNAseq data on the University o
 6. Generation of scaled (reads per million) bigwig files from alignment
 7. Optional within-sample GC normalization.
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
-9. Differential expression using DESeq2 (both unshunken LFC and apeglm or ashr shrunken LFC are reported)
-10. PCA plots of all and experimental samples, raw and normalized counts
+9. Differential expression using DESeq2 (both default and apeglm or ashr shrunken LFC are reported)
+10. PCA plots and expression boxplots of all and experimental samples, raw and normalized counts
 11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
 12. Volcano plots generated from DESeq2 results with signifcant genes
-13. Heatmap of significantly differentially expressed genes using variance stabilized expected counts
+13. Heatmap of significantly differentially expressed genes using regularized log2 expresion counts.
 14. GO and KEGG enrichment of DE genes
 15. GSEA using ranked gene lists from DESeq2
 16. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output and GO enrichment.
 
 Option Details:
+* Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
 * ERCC_spike: align reads to spike index using STAR.
 * Normalization: 
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
@@ -41,10 +42,12 @@ Lab options if running outside of Nimer Lab access:
 * RSEM_STAR_index: Specify location of previously generated index for alignment.
 	* To create the index for transcriptome alignment use rsem-prepare-reference function.  Recommendations: --star, gencocde .gtf, no_alt genome assembly.
 * STAR_index: Specify location of previously generated index for alignment.
-* Kallisto_index: Specify locaiton of previously generated index for alignment. Create using default Kallisto index function.
-* ERCC_STAR_index: Specify locaiton of previously generated STAR index for spike-ins.
+* Kallisto_index: Specify location of previously generated index for alignment. Create using default Kallisto index function.
+* ERCC_STAR_index: Specify location of previously generated STAR index for spike-ins.
 	* To create:  donwload ERCC fasta and gtf, use STAR genomeGenerate function
 * ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index or STAR_index folder.  For bigwig generation.
+* Project: project for job submission
+* GSEA_jar: Specify location of GSEA.jar (tested with GSEA-3.0.jar)
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.  In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
 
@@ -75,9 +78,7 @@ All submission scripts, error and output files are saved.
 7. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq' into your run folder.
 8. From your run folder, run analysis with this command (replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
 	
-> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
-
-* add -P <project> above if you are on more than one project.
+> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
 
 9. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.
 
@@ -91,7 +92,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.fastqc()
 - RNAseq.GSEA()
 - RNAseq.final_qc()
-- RNAseq.PCA()
+- RNAseq.principal_component_analysis()
 - RNAseq.star()
 - RNAseq.rsem()
 - RNAseq.Sleuth()
@@ -115,3 +116,4 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.plot_PCA(counts=pd.Dataframe(), colData=pd.Dataframe(), out_dir='', name='')
 - RNAseq.volcano(results=pd.Dataframe(DESeq2_results), sig_up=[], sig_down=[], name='', out_dir='')
 - RNAseq.RUV(data=pd.DataFrame(counts),design='~',colData=pd.DataFrame(),type='ercc'or'empirical',log=exp.log_file, ERCC_counts=pd.DataFrame(), comparison='', plot_dir='')
+- RNAseq.plot_exp(data=pd.DataFrame(), plot_dir='', exp_type='', name='')
