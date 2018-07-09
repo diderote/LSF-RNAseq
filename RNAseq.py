@@ -30,6 +30,8 @@ from datetime import datetime
 import subprocess as sub
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib_venn import venn2, venn2_circles
@@ -735,10 +737,14 @@ def trim(exp):
 
     return exp
 
-def spike(exp):
+def spike(exp, backend='Agg'):
     '''
+    If calling from jupyter.  Change backend as needed.
+    
     Align sequencing files to ERCC index using STAR aligner.
     '''
+    plt.switch_backend(backend)
+
     if exp.spike:
         print("Processing with ERCC spike-in: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
             
@@ -1132,7 +1138,25 @@ def kallisto(exp):
     
     return exp
 
-def plot_PCA(counts, colData, out_dir, name):
+def plot_PCA(counts, colData, out_dir, name, backend='Agg'):
+    '''
+    Inputs
+    ------
+    counts: dataframe of counts
+    colData: dataframe of colData (DESeq2 format)
+    out_dir: string of output directory
+    name: name of PCA plot
+    backend: Agg if not interactive (default), else use 'Qt5Agg'
+    
+    Outputs
+    -------
+    None
+
+    prints PCA plot to out_dir
+
+    '''
+    plt.switch_backend(backend)
+
     try:
         to_remove=['gene_name','id', 'name']
         for x in to_remove:
@@ -1368,6 +1392,7 @@ def DESeq2(exp):
 
 
     '''
+
     print('Beginning DESeq2 differential expression analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     pandas2ri.activate()
@@ -1581,14 +1606,21 @@ def DESeq2(exp):
     
     return exp
 
-def plot_exp(data, plot_dir,exp_type, name):
+def plot_exp(data, plot_dir,exp_type, name, backend='Agg'):
     '''
     Inputs
     ------
-    data = dataframe.  samples in columns, counts in rows
-    plot_dir = output directory string
-    exp_type = string of data type for ylabel (ex 'Normalized Log$_2$')
-    name = title for plot and for file
+    data: dataframe.  samples in columns, counts in rows
+    plot_dir: output directory string
+    exp_type: string of data type for ylabel (ex 'Normalized Log$_2$')
+    name : title for plot and for file
+    backend: matplotlib backedn to use.  Agg default if not interactive, else use 'Qt5Agg'
+
+    Ouputs
+    ------
+    None
+    Prints boxplot to plot_dir
+
     '''
     print('Starting global sample expression comparisons.', file=open(exp.log_file, 'a'))
 
@@ -1601,6 +1633,8 @@ def plot_exp(data, plot_dir,exp_type, name):
     plt.tight_layout()
     sns.despine()
     plt.savefig('{}{}_expression_barplot.png'.format(plot_dir, name), dpi=300)
+    if __name__ == "__main__":
+        plt.close()
 
 def Principal_Component_Analysis(exp):
 
@@ -1766,10 +1800,28 @@ def Sleuth(exp):
     exp.tasks_complete.append('Sleuth')
     return exp
 
-def volcano(results, sig_up, sig_down, name, out_dir):
+def volcano(results, sig_up, sig_down, name, out_dir, backend='Agg'):
     '''
     Generate volcano plot from deseq2 results dataframe and significant genes
+
+    Inputs
+    ------
+    results: deseq2 results as a dataframe
+    sig_up: set or list of genes up to be highlithed
+    sig_down: set or list of genes down to be highlighted
+    name: string of name of plot
+    out_dir: string of output directory
+    backend: matplotlib backend to use.  Default 'Agg' if not interactive, else switch to 'Qt5Agg'
+
+    Outputs
+    -------
+    None
+
+    Saves plot to file in out_dir
+
     '''
+    plt.switch_backend(backend)
+
 
     sns.set(context='paper', style='white', font_scale=1, rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
     ax = fig.add_subplot(111)
@@ -2053,12 +2105,14 @@ def GSEA(exp):
     
     return exp
 
-def plot_venn2(Series, string_name_of_overlap, folder):
+def plot_venn2(Series, string_name_of_overlap, folder, backend='Agg'):
     '''
     Series with with overlaps 10,01,11
     Plots a 2 way venn.
     Saves to file.
     '''
+    plt.switch_backend(backend)
+
     os.makedirs(folder, exist_ok=True)
 
     plt.figure(figsize=(7,7))
@@ -2344,6 +2398,5 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
-    plt.switch_backend('agg')
     pipeline()
 
