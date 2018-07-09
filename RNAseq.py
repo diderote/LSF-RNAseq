@@ -1411,6 +1411,7 @@ def DESeq2(exp):
     assay=ro.r("assay")
     session=ro.r("sessionInfo")
     results = ro.r('results')
+    counts = ro.r("counts")
     head = ro.r('head')
     
     out_dir= exp.scratch + 'DESeq2_results/'
@@ -1484,7 +1485,7 @@ def DESeq2(exp):
 
             #get results
             exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']))))
-            exp.de_results['DE2_{}'.format(comaparison)].index = data.index
+            exp.de_results['DE2_{}'.format(comparison)].index = data.index
             
             #get shrunken lfc (apeglm) method)
             exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
@@ -1614,7 +1615,7 @@ def DESeq2(exp):
     
     return exp
 
-def plot_exp(data, plot_dir,exp_type, name, backend='Agg'):
+def plot_exp(data, plot_dir,exp_type, name, log_file, backend='Agg'):
     '''
     Inputs
     ------
@@ -1622,6 +1623,7 @@ def plot_exp(data, plot_dir,exp_type, name, backend='Agg'):
     plot_dir: output directory string
     exp_type: string of data type for ylabel (ex 'Normalized Log$_2$')
     name : title for plot and for file
+    log_file: ouput log file
     backend: matplotlib backedn to use.  Agg default if not interactive, else use 'Qt5Agg'
 
     Ouputs
@@ -1630,7 +1632,7 @@ def plot_exp(data, plot_dir,exp_type, name, backend='Agg'):
     Prints boxplot to plot_dir
 
     '''
-    print('Starting global sample expression comparisons.', file=open(exp.log_file, 'a'))
+    print('Starting global sample expression comparisons.', file=open(log_file, 'a'))
 
     sns.set(context='paper', font='Arial', style='white',rc={'figure.dpi':300,'figure.figsize':(4,4)})
     pl=sns.boxplot(data=data, color='darkgrey', medianprops={'color':'red'})
@@ -1659,7 +1661,8 @@ def Principal_Component_Analysis(exp):
     plot_exp(data=exp.count_matrix,
              plot_dir=out_dir,
              exp_type= 'raw counts',
-             name='all_raw_counts'
+             name='all_raw_counts',
+             log_file=exp.log_file
              )
 
     print('Starting PCA analysis for DESeq2 regularized log counts of all samples.', file=open(exp.log_file, 'a'))
@@ -1672,7 +1675,8 @@ def Principal_Component_Analysis(exp):
     plot_exp(data=exp.de_results['all_rlog'],
              plot_dir=out_dir,
              exp_type='Normalized log$_2$',
-             name='all_samples_rlog'
+             name='all_samples_rlog',
+             log_file=exp.log_file
              )
 
     if exp.norm.lower() == 'ercc':
@@ -1685,7 +1689,8 @@ def Principal_Component_Analysis(exp):
         plot_exp(data=exp.de_results['all_ERCC_normCounts'],
                  plot_dir=out_dir,
                  exp_type='Normalized',
-                 name='all_ercc_normalized_normCounts'
+                 name='all_ercc_normalized_normCounts',
+                 log_file=exp.log_file
                  )
 
 
@@ -1698,7 +1703,8 @@ def Principal_Component_Analysis(exp):
         plot_exp(data=exp.de_results['all_ERCC_rlog'],
                  plot_dir=out_dir,
                  exp_type='Normalized log$_2$',
-                 name='all_ercc_rlog_+counts'
+                 name='all_ercc_rlog_+counts',
+                 log_file=exp.log_file
                  )
 
     for comparison,design in exp.designs.items():
@@ -1711,7 +1717,8 @@ def Principal_Component_Analysis(exp):
         plot_exp(data=exp.de_results['{}_rlog_counts'.format(comparison)],
                  plot_dir=out_dir,
                  exp_type='Normalized log$_2$',
-                 name=comparison
+                 name=comparison,
+                 log_file=exp.log_file
                  )
 
     if exp.gc_norm:
@@ -1724,7 +1731,8 @@ def Principal_Component_Analysis(exp):
         plot_exp(data=exp.gc_count_matrix,
                  plot_dir=out_dir,
                  exp_type='GC Normalized Raw',
-                 name='gc_nromalized_raw_counts'
+                 name='gc_nromalized_raw_counts',
+                 log_file=exp.log_file
                  )
 
     exp.tasks_complete.append('PCA')
