@@ -208,6 +208,7 @@ def parse_yaml():
         exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
         exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
         exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
+        exp.genome_indicies['Gene_names'] = yml['Gene_names']
     elif yml['Lab'].lower() == 'nimer':
         exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
         exp.genome_indicies['GSEA_jar'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar'
@@ -216,16 +217,19 @@ def parse_yaml():
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
             exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
+            exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/gencode_gene_dict.pkl'
         elif exp.genome == 'hg38':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
             exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
+            exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Annotation/Archives/archive-2015-08-11-09-31-31/Genes.gencode/ENSG_NAME_dict.pkl'
         elif exp.genome == 'hg19':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
             exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
+            exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/gencode_gene_dict.pkl'
  
     #GC_normalizaton
     if yml['Tasks']['GC_Normalization']:
@@ -888,8 +892,8 @@ def bam2bw(in_bam,out_bw,job_log_folder,name,genome):
     print('kwargs=dict(bg=True,split=True,g="{genome}")'.format(genome=genome), file=open(script,'a'))
     print('readcount=pybedtools.contrib.bigwig.mapped_read_count("{in_bam}")'.format(in_bam=in_bam), file=open(script,'a'))
     print('_scale = 1 / (readcount / 1e6)\nkwargs["scale"] = _scale', file=open(script,'a'))
-    print('x = pybedtools.BedTool("{in_bam}").genome_coverage(**kwargs)'.format(in_bam=in_bam), file=open(script,'a'))
-    print('cmds = ["bedGraphToBigWig", x.fn, "{genome}", "{out_bw}"]'.format(genome=genome,out_bw=out_bw), file=open(script,'a'))
+    print('bedgraph = pybedtools.BedTool("{in_bam}").genome_coverage(**kwargs).sort()'.format(in_bam=in_bam), file=open(script,'a'))
+    print('cmds = ["bedGraphToBigWig", bedgraph.fn, "{genome}", "{out_bw}"]'.format(genome=genome,out_bw=out_bw), file=open(script,'a'))
     print('p = subprocess.Popen(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)', file=open(script,'a'))
     print('stdout, stderr = p.communicate()', file=open(script,'a'))
 
@@ -951,11 +955,6 @@ def star(exp):
 
         scan += 1
 
-    for number,sample in exp.samples.items():
-        del_file='{}{}.wig'.format(out_dir, sample,file)
-        if os.path.isfile(del_file):
-            os.remove(del_file)
-
     print('STAR alignment to genome finished.', file=open(exp.log_file, 'a'))
     
     ### Generate one matrix for all counts
@@ -965,12 +964,21 @@ def star(exp):
             print('At least one STAR alignment failed.', file=open(exp.log_file,'a'))
             raise RaiseError('At least one STAR alignment failed. Check scripts and resubmit.')
         else:
-            counts = pd.DataFrame(index=pd.read_csv(counts_glob[1], header=None, index_col=0, sep="\t").index)
+            exp.count_matrix = pd.DataFrame(index=pd.read_csv(counts_glob[1], header=None, index_col=0, sep="\t").index)
         
             for number,sample in exp.samples.items():
-                exp.counts[sample] = pd.read_csv('{}{}_ReadsPerGene.out.tab'.format(out_dir,sample),header=None, index_col=0, sep="\t")[[3]]
-            exp.count_matrix = counts.iloc[4:,:]
-            exp.count_matrix.to_csv('{}STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+                exp.count_matrix[sample] = pd.read_csv('{}{}_ReadsPerGene.out.tab'.format(out_dir,sample),header=None, index_col=0, sep="\t")[[3]]
+            exp.count_matrix = exp.count_matrix.iloc[4:,:]
+            exp.count_matrix.to_csv('{}ALL_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+            if os.path.isfile(exp.genome_indicies['Gene_names']):
+                with open(exp.genome_indicies['Gene_names'], 'rb') as file:
+                    gene_dict = pickle.load(file)
+                exp.count_matrix['name'] = exp.count_matrix.index
+                exp.count_matrix = exp.count_matrix[exp.count_matrix.name.isin(gene_dict.keys())]
+                exp.count_matrix['name'] = exp.count_matrix.temp.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
+                exp.count_matrix.index=exp.count_matrix.name
+                exp.count_matrix.drop(columns=‘name’).to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+
     except:
         print('Error generating count matrix.', file=open(exp.log_file,'a'))
         raise RaiseError('Error generating STARcount matrix. Make sure the file is not empty.')

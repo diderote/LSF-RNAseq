@@ -77,4 +77,5 @@ ChrNameLength_file: /path/to/chrNameLength/file.txt #tab delimited file with chr
 ERCC_Mix_file: /path/to/ERCC/Mix/file.txt
 GC_Content_file: /path/to/GC/Content/file.txt
 GSEA_jar: /path/to/GSEA.jar
+Gene_names: /path/to/gene/name/dict
 Pegasus_Project:

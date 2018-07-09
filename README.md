@@ -34,6 +34,7 @@ Option Details:
 * Sequencing_type: paired or single end sequencing.
 
 Other options:
+*  Spike_matrix: if not aligning and using ERCC, path to file containing ERCCs counts.
 *  Count_matrix: if not aligning, path to a file containing gene names as rows(first column), sample names as columns(top row), and gene counts in cells.
 *  Sig_matrix: if solely performing overlaps, path to file with samples names (top row) and gene names to overlap below. Overlap of over two columns will be performed (1v2, 3v4... etc)
 
@@ -48,6 +49,7 @@ Lab options if running outside of Nimer Lab access:
 * ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index or STAR_index folder.  For bigwig generation.
 * Project: project for job submission
 * GSEA_jar: Specify location of GSEA.jar (tested with GSEA-3.0.jar)
+* Gene_names: optional. provide path to a pickled dictionary to add an attribute such as 'gene_name' to the count_matrix.  Useful for STAR alinging where gene_id is default.  
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.  In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
 
