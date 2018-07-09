@@ -1203,7 +1203,7 @@ def plot_PCA(counts, colData, out_dir, name, backend='Agg'):
         
         sns.despine()
         plt.tight_layout()
-        plt.subplots_adjust(right=0.9, top=.9)
+        plt.subplots_adjust(right=0.8, top=.8)
 
         os.makedirs(out_dir, exist_ok=True)
         ax.figure.savefig('{}{}_PCA.png'.format(out_dir,name))
@@ -1634,6 +1634,8 @@ def plot_exp(data, plot_dir,exp_type, name, log_file, backend='Agg'):
     '''
     print('Starting global sample expression comparisons.', file=open(log_file, 'a'))
 
+    if __name__ == "__main__":
+        plt.clf()
     sns.set(context='paper', font='Arial', style='white',rc={'figure.dpi':300,'figure.figsize':(4,4)})
     pl=sns.boxplot(data=data, color='darkgrey', medianprops={'color':'red'})
     pl.set_ylabel('Expression Counts\n({})'.format(exp_type))
@@ -1839,7 +1841,8 @@ def volcano(results, sig_up, sig_down, name, out_dir, backend='Agg'):
     plt.switch_backend(backend)
 
 
-    sns.set(context='paper', style='white', font_scale=1, rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
+    sns.set(context='paper', style='white', font_scale=1)
+    fig = plt.figure(figsize=(6,6), dpi=300)
     ax = fig.add_subplot(111)
 
     results['logp'] = results.pvalue.apply(lambda x: -np.log10(x))
