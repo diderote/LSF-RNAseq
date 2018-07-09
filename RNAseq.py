@@ -1759,11 +1759,11 @@ def Sleuth(exp):
         print('Beginning Sleuth differential expression analysis for {}: {:%Y-%m-%d %H:%M:%S}\n'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
 
         path = []
-        for name in design['colData'].sample_names.tolist():
+        for name in design['colData'].index.tolist():
             path.append(kal_dir + name)
 
         if 'compensation' in design['colData'].columns.tolist():
-            s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+            s2c = pd.DataFrame({'sample': design['colData'].index.tolist(),
                                 'compensation': design['colData'].compensation.tolist(),
                                 'condition': design['colData'].main_comparison.tolist(),
                                 'path': path
@@ -1774,7 +1774,7 @@ def Sleuth(exp):
             condition=Formula('~ compensation + condition')
             reduced = Formula('~compensation')
         else:
-            s2c = pd.DataFrame({'sample': design['colData'].sample_names.tolist(),
+            s2c = pd.DataFrame({'sample': design['colData'].index.tolist(),
                                 'condition': design['colData'].main_comparison.tolist(),
                                 'path': path
                                },
