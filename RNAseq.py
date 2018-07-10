@@ -2055,8 +2055,8 @@ def GSEA(exp):
 
     for comparison,design in exp.designs.items():
         
-        indexpath=glob.glob('{}/{}/Hallmarks/*/index.html'.format(out_dir,comparison))[0]
-        if os.path.isfile(indexpath):
+        indexpath=glob.glob('{}/{}/Hallmarks/*/index.html'.format(out_dir,comparison))
+        if len(indexpath) > 0:
             print('GSEA Hallmarks already done for {name} for {comparison}. Skipping GSEA for {comparison}\n'.format(name=name,comparison=comparison), file=open(exp.log_file,'a'))
         else:
             print('Running GSEA for {comparison}. Results found in {out}DESeq2_GSEA/{comparison}. \n'.format(comparison=comparison, out=exp.out_dir), file=open(exp.log_file, 'a'))
