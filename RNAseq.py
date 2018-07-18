@@ -977,7 +977,7 @@ def star(exp):
                 exp.count_matrix = exp.count_matrix[exp.count_matrix.name.isin(gene_dict.keys())]
                 exp.count_matrix['name'] = exp.count_matrix.temp.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
                 exp.count_matrix.index=exp.count_matrix.name
-                exp.count_matrix.drop(columns=‘name’).to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+                exp.count_matrix.drop(columns='name').to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
     except:
         print('Error generating count matrix.', file=open(exp.log_file,'a'))
