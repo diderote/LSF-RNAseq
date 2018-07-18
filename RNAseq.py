@@ -901,9 +901,9 @@ def bam2bw(in_bam,out_bw,job_log_folder,name,genome):
 
 def star(exp):
     '''
-    Alignment to genome using STAR and htseq
+    Alignment to genome using STAR
     '''
-    print('\n Beginning RSEM-STAR transcriptome alignments: {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    print('\n Beginning genome alignments with STAR: {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(exp.log_file, 'a'))
     out_dir = '{}STAR_results/'.format(exp.scratch)
     os.makedirs(out_dir, exist_ok=True)
     os.chdir(out_dir) 
@@ -975,7 +975,7 @@ def star(exp):
                     gene_dict = pickle.load(file)
                 exp.count_matrix['name'] = exp.count_matrix.index
                 exp.count_matrix = exp.count_matrix[exp.count_matrix.name.isin(gene_dict.keys())]
-                exp.count_matrix['name'] = exp.count_matrix.temp.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
+                exp.count_matrix['name'] = exp.count_matrix.name.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
                 exp.count_matrix.index=exp.count_matrix.name
                 exp.count_matrix.drop(columns='name').to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
