@@ -30,8 +30,8 @@ from datetime import datetime
 import subprocess as sub
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib_venn import venn2, venn2_circles
@@ -114,7 +114,7 @@ def parse_yaml():
         os.makedirs(exp.scratch, exist_ok=True)
     else:
         try:
-            exp.scratch = '{}{}/'.format(yml['Scratch_folder'],yml['Name'])
+            exp.scratch ='{}{}/'.format(yml['Scratch_folder'],yml['Name']) if yml['Scratch_folder'].endswith('/') else '{}/{}/'.format(yml['Scratch_folder']yml['Name'])
             os.makedirs(exp.scratch, exist_ok=True)
         except:
             raise RaiseError('Error making scratch/staging directory', file=open(exp.log_file,'a'))
@@ -141,12 +141,8 @@ def parse_yaml():
     #Passing paramters to new object
     exp.date = format(datetime.now(), '%Y-%m-%d') 
     
-    if yml['Output_directory'].endswith('/'):
-        exp.out_dir = '{}{}/'.format(yml['Output_directory'],exp.name)
-    else:
-        exp.out_dir = '{}/{}/'.format(yml['Output_directory'], exp.name)
-    
     #Make out directory if it doesn't exist
+    exp.out_dir = '{}{}/'.format(yml['Output_directory'],exp.name) if yml['Output_directory'].endswith('/') else '{}/{}/'.format(yml['Output_directory'], exp.name)
     os.makedirs(exp.out_dir, exist_ok=True)
 
     #Log file
@@ -209,6 +205,8 @@ def parse_yaml():
         exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
         exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
         exp.genome_indicies['Gene_names'] = yml['Gene_names']
+        if exp.genome == 'mm10':
+            exp.genome_indicies['GMT'] = yml['GSEA_mouse_gmx_folder'] if yml['GSEA_mouse_gmx_folder'].endswith('/') else '{}/'.format(yml['GSEA_mouse_gmx_folder'])
     elif yml['Lab'].lower() == 'nimer':
         exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
         exp.genome_indicies['GSEA_jar'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar'
@@ -218,6 +216,7 @@ def parse_yaml():
             exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/gencode_gene_dict.pkl'
+            exp.genome_indicies['GMT'] = '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/option_files/mouse_gmts/'
         elif exp.genome == 'hg38':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
@@ -281,11 +280,8 @@ def parse_yaml():
 
     #Fastq Folder
     if 'Stage' not in exp.tasks_complete:
-        if yml['Fastq_directory'][-1] != '/':
-            yml['Fastq_directory'] = yml['Fastq_directory'] +'/'
-        if os.path.isdir(yml['Fastq_directory']):
-            exp.fastq_folder=yml['Fastq_directory']
-        else:
+        exp.fastq_folder= yml['Fastq_directory'] if yml['Fastq_directory'].endswith('/') else '{}/'.format(yml['Fastq_directory'])
+        if os.path.isdir(exp.fastq_folder) == False:
             raise IOError("Can't Find Fastq Folder.")
     
     #Hard clip
@@ -1568,7 +1564,7 @@ def DESeq2(exp):
                                                                      )
 
     #rlog count matrix for all samples.
-    colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A']*exp.sample_number})
+    colData = pd.DataFrame(index=data.columns, data={'condition': ['A']*exp.sample_number})
     design=ro.Formula("~1")
     #count_matrix = round(count_matrix[count_matrix[count_matrix > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
     dds_all = deseq.DESeqDataSetFromMatrix(countData = count_matrix.values,
@@ -1576,8 +1572,8 @@ def DESeq2(exp):
                                            design=design
                                           )
     exp.de_results['all_rlog'] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds_all)))
-    exp.de_results['all_rlog'].index=count_matrix.index
-    exp.de_results['all_rlog'].columns=count_matrix.columns
+    exp.de_results['all_rlog'].index=data.index
+    exp.de_results['all_rlog'].columns=data.columns
     exp.de_results['all_rlog']['gene_name']=exp.de_results['all_rlog'].index
     exp.de_results['all_rlog']['gene_name']=exp.de_results['all_rlog'].gene_name.apply(lambda x: x.split("_")[1])
     exp.de_results['all_rlog'].to_csv('{}ALL-samples-blind-rlog-counts.txt'.format(out_dir), 
@@ -2046,12 +2042,21 @@ def GSEA(exp):
     out_dir = '{}DESeq2_GSEA'.format(exp.scratch)
     os.makedirs(out_dir, exist_ok=True)
 
-    gmts={'h.all': 'Hallmarks',
-          'c2.cp.kegg': 'KEGG',
-          'c5.bp': 'GO_Biological_Process',
-          'c5.mf': 'GO_Molecular_Function',
-          'c2.cgp': 'Curated_Gene_Sets'
-          }
+    if exp.genome == 'mm10':
+        gmt_list = glob.glob('{}*.gmt'.format(exp.genome_indicies['GMT']))
+        gmts={'Hallmarks': [gmt for gmt in gmt_list if 'h.all' in gmt][0],
+              'KEGG':[gmt for gmt in gmt_list if 'c2.cp.kegg' in gmt][0],
+              'GO_Biological_Process':[gmt for gmt in gmt_list if 'c5.bp' in gmt][0],
+              'GO_Molecular_Function':[gmt for gmt in gmt_list if 'c5.mf' in gmt][0],
+              'Curated_Gene_Sets':[gmt for gmt in gmt_list if 'c2.cgp' in gmt][0]
+              }
+    else:
+        gmts={'Hallmarks': 'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/h.all.v6.2.symbols.gmt',
+              'KEGG':'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c2.cp.kegg.v6.2.symbols.gmt',
+              'GO_Biological_Process':'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c5.bp.v6.2.symbols.gmt',
+              'GO_Molecular_Function':'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c5.mf.v6.2.symbols.gmt',
+              'Curated_Gene_Sets':'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c2.cgp.v6.2.symbols.gmt'
+              }
 
     for comparison,design in exp.designs.items():
         
@@ -2079,20 +2084,23 @@ def GSEA(exp):
             results.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
             
             rnk = '{}_stat.rnk'.format(comparison)
-            rnk2 = '{}_shrunkenLFC.rnk'.format(comparison)
+            rnk2 = '{}_shrunkenLFC.rnk'.format(comparison) 
 
+            if exp.genome == 'mm10':
+                results['Ens_ID'] = [ID.split('.')[0] for ID in results.index.tolist()]
+                
             os.chdir(out_compare)
 
             print('Beginning GSEA enrichment for {} using preranked genes: {:%Y-%m-%d %H:%M:%S}'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
             print('Genes with positive LFC (to the left left in GSEA output graph) are upregulated in experimental vs control conditions. Genes with negative LFC (on right) are downregulated genes in experimental samples vs controls.\n', file=open(exp.log_file,'a'))
                   
-            for gset,name in gmts.items():
+            for name,gset in gmts.items():
                 set_dir='{}/{}'.format(out_compare,name) 
                 os.makedirs(set_dir, exist_ok=True)
 
                 command_list = ['module rm python java perl share-rpms65',
                                 'source activate RNAseq',
-                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
+                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
                                ] #for shrunken lfc: 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
                 exp.job_id.append(send_job(command_list=command_list, 
@@ -2110,7 +2118,7 @@ def GSEA(exp):
     job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
     for comparison,design in exp.designs.items():
-        for gset,name in gmts.items():
+        for name,gset in gmts.items():
             path=glob.glob('{}/{}/{}/*'.format(out_dir,comparison,name))[0]
             if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
                 os.chdir('{}/{}/{}'.format(out_dir,comparison,name))

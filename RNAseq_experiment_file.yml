@@ -77,5 +77,6 @@ ChrNameLength_file: /path/to/chrNameLength/file.txt #tab delimited file with chr
 ERCC_Mix_file: /path/to/ERCC/Mix/file.txt
 GC_Content_file: /path/to/GC/Content/file.txt
 GSEA_jar: /path/to/GSEA.jar
+GSEA_mouse_gmx_folder: /path/to/mouse/gmts #generated from GSEA using Mouse_ensemble_gene chip2chip
 Gene_names: /path/to/gene/name/dict
 Pegasus_Project:
