@@ -114,7 +114,7 @@ def parse_yaml():
         os.makedirs(exp.scratch, exist_ok=True)
     else:
         try:
-            exp.scratch ='{}{}/'.format(yml['Scratch_folder'],yml['Name']) if yml['Scratch_folder'].endswith('/') else '{}/{}/'.format(yml['Scratch_folder']yml['Name'])
+            exp.scratch ='{}{}/'.format(yml['Scratch_folder'],yml['Name']) if yml['Scratch_folder'].endswith('/') else '{}/{}/'.format(yml['Scratch_folder'],yml['Name'])
             os.makedirs(exp.scratch, exist_ok=True)
         except:
             raise RaiseError('Error making scratch/staging directory', file=open(exp.log_file,'a'))
@@ -931,6 +931,7 @@ def star(exp):
                                 'source activate RNAseq',
                                 align,
                                 'python {}'.format(scaled),
+                                'samtools index {}_Aligned.sortedByCoord.out.bam'.format(sample)
                                 ]
 
                 exp.job_id.append(send_job(command_list=command_list, 
