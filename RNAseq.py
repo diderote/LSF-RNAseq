@@ -11,7 +11,6 @@ To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - if no chrname - skip bigwig generation
-    - add gsea.jar to path
 
 Author: Daniel Karl
 
@@ -38,6 +37,7 @@ from matplotlib_venn import venn2, venn2_circles
 import seaborn as sns
 from sklearn.decomposition import PCA
 import rpy2.robjects as ro
+import rpy2.rinterface as ri
 from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri, r, globalenv, Formula
 import gseapy
@@ -52,7 +52,7 @@ class Experiment(object):
                   log_file='',fastq_folder='',spike=False, count_matrix=pd.DataFrame(), trim=[0,0],
                   spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
                   job_id=[],de_groups={},norm='Median-Ratios',designs={}, overlaps={}, gene_lists={},
-                  tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap={},
+                  tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap=False,
                   genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame(),
                   seq_type='', alignment_mode='transcript'
                  ):
@@ -216,7 +216,7 @@ def parse_yaml():
             exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/gencode_gene_dict.pkl'
-            exp.genome_indicies['GMT'] = '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/option_files/mouse_gmts/'
+            exp.genome_indicies['GMT'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/mouse_gmts/'
         elif exp.genome == 'hg38':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
@@ -423,8 +423,9 @@ def parse_yaml():
             print(str(items['colData']), file=open(exp.log_file,'a'))
 
     #Initialize DE sig overlaps
-    for comparison, design in exp.designs.items():
-        exp.de_sig_overlap[comparison] = (True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False)
+    exp.de_sig_overlap = True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False
+    if exp.de_sig_overlap == False or exp.alignment_mode.lower() == 'transcript':
+        exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
         
     #Overlaps
     if yml['Tasks']['Overlap_of_genes'] == False:
@@ -538,6 +539,14 @@ def job_wait(id_list, job_log_folder, log_file):
             running = False
         else:
             print('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(log_file, 'a'))
+
+def rout_write(x, exp.scratch=exp.scratch):
+    '''
+    function for setting r_out to print to file instead of jupyter
+    rpy2.rinterface.set_writeconsole_regular(rout_write)
+    rpy2.rinterface.set_writeconsole_warnerror(rout_write)
+    '''
+    print(x, file=open('{}/R_out_{:%Y-%m-%d}.txt'.format(exp.scratch, datetime.now()), 'a'))
 
 def stage(exp):
     '''
@@ -974,7 +983,8 @@ def star(exp):
                 exp.count_matrix = exp.count_matrix[exp.count_matrix.name.isin(gene_dict.keys())]
                 exp.count_matrix['name'] = exp.count_matrix.name.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
                 exp.count_matrix.index=exp.count_matrix.name
-                exp.count_matrix.drop(columns='name').to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+                exp.count_matrix = exp.count_matrix.drop(columns=['name'])
+                exp.count_matrix.drop(columns=['name']).to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
     except:
         print('Error generating count matrix.', file=open(exp.log_file,'a'))
@@ -1216,6 +1226,9 @@ def GC_normalization(exp):
     '''
     pandas2ri.activate()
 
+    ri.set_writeconsole_regular(rout_write)
+    ri.set_writeconsole_warnerror(rout_write)
+
     edaseq = importr('EDASeq')
     as_df=ro.r("as.data.frame")
     assay=ro.r("assay")
@@ -1266,6 +1279,9 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
     try:
         pandas2ri.activate()
         
+        ri.set_writeconsole_regular(rout_write)
+        ri.set_writeconsole_warnerror(rout_write)
+
         deseq = importr('DESeq2')
         ruvseq = importr('RUVSeq')
         edaseq = importr('EDASeq')
@@ -1402,6 +1418,9 @@ def DESeq2(exp):
     
     pandas2ri.activate()
     
+    ri.set_writeconsole_regular(rout_write)
+    ri.set_writeconsole_warnerror(rout_write)
+
     deseq = importr('DESeq2')
     as_df=ro.r("as.data.frame")
     as_cv=ro.r('as.character')
@@ -1565,7 +1584,7 @@ def DESeq2(exp):
                                                                      )
 
     #rlog count matrix for all samples.
-    colData = pd.DataFrame(index=data.columns, data={'condition': ['A']*exp.sample_number})
+    colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A']*exp.sample_number})
     design=ro.Formula("~1")
     #count_matrix = round(count_matrix[count_matrix[count_matrix > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]) 
     dds_all = deseq.DESeqDataSetFromMatrix(countData = count_matrix.values,
@@ -1573,8 +1592,8 @@ def DESeq2(exp):
                                            design=design
                                           )
     exp.de_results['all_rlog'] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds_all)))
-    exp.de_results['all_rlog'].index=data.index
-    exp.de_results['all_rlog'].columns=data.columns
+    exp.de_results['all_rlog'].index=count_matrix.index
+    exp.de_results['all_rlog'].columns=count_matrix.columns
     exp.de_results['all_rlog']['gene_name']=exp.de_results['all_rlog'].index
     exp.de_results['all_rlog']['gene_name']=exp.de_results['all_rlog'].gene_name.apply(lambda x: x.split("_")[1])
     exp.de_results['all_rlog'].to_csv('{}ALL-samples-blind-rlog-counts.txt'.format(out_dir), 
@@ -1745,6 +1764,9 @@ def Sleuth(exp):
     '''
 
     pandas2ri.activate()
+
+    ri.set_writeconsole_regular(rout_write)
+    ri.set_writeconsole_warnerror(rout_write)
  
     sleuth = importr('sleuth') 
     biomart = importr('biomaRt')
@@ -1871,8 +1893,6 @@ def volcano(results, sig_up, sig_down, name, out_dir, backend='Agg'):
 
     return
 
-
-
 def sigs(exp):
     '''
     Identifies significantly differentially expressed genes at 2 fold and 1.5 fold cutoffs with q<0.05. Generates Volcano Plots of results.
@@ -1882,7 +1902,7 @@ def sigs(exp):
 
     for comparison,design in exp.designs.items():
 
-        if exp.de_sig_overlap[comparison]:
+        if exp.de_sig_overlap:
             print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2 for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
        
             exp.sig_lists[comparison] = {}
@@ -1956,28 +1976,27 @@ def clustermap(exp):
     
     for comparison,design in exp.designs.items():
         rlog = exp.de_results['{}_rlog_counts'.format(comparison)]
-        rlog['gene_name']=rlog.index
-        rlog['gene_name']=rlog.gene_name.apply(lambda x: x.split("_")[1])
+        rlog['gene_name']=[name.split("_")[1] for name in rlog.index.tolist()]
 
-        sig = list(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
-        if len(sig) == 0:
-            print('There are no significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+        sig = set(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
+        if len(sig) < 2:
+            print('There are not enough significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM.savefig('{}{}_2FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM.savefig('{}{}_2FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
-        sig15 = list(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
-        if len(sig15) == 0:
-            print('There are no significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+        sig15 = set(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
+        if len(sig15) < 2:
+            print('There are not enough significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM15 = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM15.savefig('{}{}_1.5FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM15.savefig('{}{}_1.5FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
 
-        sigAll = list(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
-        if len(sigAll) == 0:
-            print('There are no significantly differentially expressed genes without a fold change in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
+        sigAll = set(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
+        if len(sigAll) < 2:
+            print('There are not enough significantly differentially expressed genes without a fold change in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), file=open(exp.log_file,'a'))
         else:
             CM15 = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sigAll)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM15.savefig('{}{}_noFCfilter_Heatmap.png'.format(out_dir,comparison), dpi=300)
@@ -2079,17 +2098,14 @@ def GSEA(exp):
             lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
             print('Using Wald statistic for gene preranking.', file = open(exp.log_file,'a'))
-            results.sort_values(by='stat', ascending=False, inplace=True)
-            results.index = results.gene_name
-            results = results.stat.dropna()
-            results.to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
-            
             rnk = '{}_stat.rnk'.format(comparison)
-            rnk2 = '{}_shrunkenLFC.rnk'.format(comparison) 
 
             if exp.genome == 'mm10':
                 results['Ens_ID'] = [ID.split('.')[0] for ID in results.index.tolist()]
-                
+                results[['Ens_ID','stat']].dropna(subset=['stat']).to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=None, index=None, sep="\t")
+            else:
+                results[['gene_name','stat']].dropna(subset=['stat']).to_csv('{}/{}_stat.rnk'.format(out_compare,comparison), header=None, index=None, sep="\t")
+
             os.chdir(out_compare)
 
             print('Beginning GSEA enrichment for {} using preranked genes: {:%Y-%m-%d %H:%M:%S}'.format(comparison, datetime.now()), file=open(exp.log_file, 'a'))
@@ -2101,11 +2117,11 @@ def GSEA(exp):
 
                 command_list = ['module rm python java perl share-rpms65',
                                 'source activate RNAseq',
-                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{gset}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
+                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{name}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
                                ] #for shrunken lfc: 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
                 exp.job_id.append(send_job(command_list=command_list, 
-                                           job_name='{}_{}_GSEA'.format(comparison,gset),
+                                           job_name='{}_{}_GSEA'.format(comparison,name),
                                            job_log_folder=exp.job_folder,
                                            q= 'general',
                                            mem=3000,
