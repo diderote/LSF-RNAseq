@@ -540,13 +540,13 @@ def job_wait(id_list, job_log_folder, log_file):
         else:
             print('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(log_file, 'a'))
 
-def rout_write(x, exp.scratch=exp.scratch):
+def rout_write(x, folder=exp.job_folder):
     '''
     function for setting r_out to print to file instead of jupyter
     rpy2.rinterface.set_writeconsole_regular(rout_write)
     rpy2.rinterface.set_writeconsole_warnerror(rout_write)
     '''
-    print(x, file=open('{}/R_out_{:%Y-%m-%d}.txt'.format(exp.scratch, datetime.now()), 'a'))
+    print(x, file=open('{}/R_out_{:%Y-%m-%d}.txt'.format(folder, datetime.now()), 'a'))
 
 def stage(exp):
     '''
