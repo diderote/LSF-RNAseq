@@ -1052,7 +1052,7 @@ def rsem(exp):
     matrix='rsem-generate-data-matrix '
     columns=[]
     for number,sample in exp.samples.items():
-        matrix = '{}{}{}.gene.results '.format(matrix,out_dir,sample)
+        matrix = '{}{}{}.genes.results '.format(matrix,out_dir,sample)
         columns.append(sample)
         
     matrix = matrix + '> {}RSEM.count.matrix.txt'.format(out_dir)
