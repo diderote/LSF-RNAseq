@@ -5,12 +5,12 @@ This pipline handles processing and analyses for RNAseq data on the University o
 1. Screening for contamination of other genomes
 2. Fastq quality measurements
 3. Adapter and quality fastq trimming
-4. Spike-in assessment (if applicable)
+4. Spike-in alignment and analysis (if applicable)
 5. Alignment
 	- Transcriptome alignment using STAR with RSEM expected counts and optional Kallisto (not for single-end) with GENCODE annotations
 	- Genome alignment using STAR counts with GENCODE annotations
 6. Generation of scaled (reads per million) bigwig files from alignment
-7. Optional within-sample GC normalization.
+7. Optional within-sample GC normalization (useful for experiments across multiple sequencing runs).
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
 9. Differential expression using DESeq2 (both default and apeglm or ashr shrunken LFC are reported)
 10. PCA plots and expression boxplots of all and experimental samples, raw and normalized counts
@@ -30,7 +30,7 @@ Option Details:
 	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation). Also reports ashr lfc shrunken values.
 * Alignment_Mode: Whether to align to transcriptome with RSEM-STAR (default) or to genome with STAR.
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
-* GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour for CG content file generatation.
+* GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour of computing time for CG content file generatation.
 * Sequencing_type: paired or single end sequencing.
 
 Other options:
@@ -49,6 +49,7 @@ Lab options if running outside of Nimer Lab access:
 * ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index or STAR_index folder.  For bigwig generation.
 * Project: project for job submission
 * GSEA_jar: Specify location of GSEA.jar (tested with GSEA-3.0.jar)
+* GSEA_mouse_gmts: Path to folder containing gmts using mouse ensembl gene IDs instead of human gene names. These can be found in the optional file folder.
 * Gene_names: optional. provide path to a pickled dictionary to add an attribute such as 'gene_name' to the count_matrix.  Useful for STAR alinging where gene_id is default.  
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.  In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
@@ -66,7 +67,7 @@ All submission scripts, error and output files are saved.
 > module rm python
 > conda env create -f /projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml
 
- - If this env throws errors, check that miniconda is installed in $HOME/miniconda3/ or change the bottom of the environment.yml file as needed.  If there is a package error, try removing the version of that package from the .yml file and trying again.
+ - If this throws errors, check that miniconda is installed in $HOME/miniconda3/ or change the bottom line of the environment.yml file to match your conda installation.  If there is a package error, try removing the version of that package from the .yml file and trying again.
 
 4. OPTIONAL SETUP:
 	- For use of contamination screen (fastq screen):
@@ -119,3 +120,4 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.volcano(results=pd.Dataframe(DESeq2_results), sig_up=[], sig_down=[], name='', out_dir='')
 - RNAseq.RUV(data=pd.DataFrame(counts),design='~',colData=pd.DataFrame(),type='ercc'or'empirical',log=exp.log_file, ERCC_counts=pd.DataFrame(), comparison='', plot_dir='')
 - RNAseq.plot_exp(data=pd.DataFrame(), plot_dir='', exp_type='', name='')
+- RNAseq.rout_write()
