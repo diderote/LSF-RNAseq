@@ -531,13 +531,13 @@ def job_wait(id_list, job_log_folder, log_file):
         else:
             print('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(log_file, 'a'))
 
-def rout_write(x, folder):
-    '''
-    function for setting r_out to print to file instead of jupyter
-    rpy2.rinterface.set_writeconsole_regular(rout_write)
-    rpy2.rinterface.set_writeconsole_warnerror(rout_write)
-    '''
-    print(x, file=open('{}/R_out_{:%Y-%m-%d}.txt'.format(folder, datetime.now()), 'a'))
+#def rout_write(x, folder):
+#    '''
+#    function for setting r_out to print to file instead of jupyter
+#    rpy2.rinterface.set_writeconsole_regular(rout_write)
+#    rpy2.rinterface.set_writeconsole_warnerror(rout_write)
+#    '''
+#    print(x, file=open('{}/R_out_{:%Y-%m-%d}.txt'.format(folder, datetime.now()), 'a'))
 
 def stage(exp):
     '''
@@ -1208,8 +1208,8 @@ def GC_normalization(exp):
     '''
     pandas2ri.activate()
 
-    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
-    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
     edaseq = importr('EDASeq')
     as_df=ro.r("as.data.frame")
@@ -1261,8 +1261,8 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
     try:
         pandas2ri.activate()
         
-        ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
-        ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
+        #ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+        #ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
         deseq = importr('DESeq2')
         ruvseq = importr('RUVSeq')
@@ -1400,8 +1400,8 @@ def DESeq2(exp):
     
     pandas2ri.activate()
     
-    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
-    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
     deseq = importr('DESeq2')
     as_df=ro.r("as.data.frame")
@@ -1745,8 +1745,8 @@ def Sleuth(exp):
 
     pandas2ri.activate()
 
-    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
-    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    #ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
  
     sleuth = importr('sleuth') 
     biomart = importr('biomaRt')
