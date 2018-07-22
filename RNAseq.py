@@ -255,34 +255,13 @@ def parse_yaml():
         print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
     #Spike
-    if yml['ERCC_spike']:
-        exp.spike = True
-        if 'Stage' in exp.tasks_complete:
-            if yml['Fastq_directory'][-1] != '/':
-                yml['Fastq_directory'] = yml['Fastq_directory'] + '/'
-            if os.path.isdir(yml['Fastq_directory']):
-                exp.fastq_folder=yml['Fastq_directory']
-            else:
-                raise IOError("Can't Find Fastq Folder.")
-
-    if (yml['Normalization'].lower() == 'ercc') and (yml['Tasks']['Align'] == False):
-        spike_matrix_loc = yml['Spike_matrix']
-        if os.path.exists(spike_matrix_loc):
-            print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
-            if spike_matrix_loc.split('.')[-1] == 'txt':
-                exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
-            elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
-                exp.spike_counts = pd.read_excel(spike_matrix_loc)
-            else:
-                raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
-        else:
-            raise IOError("Spike Count Matrix Not Found. ")
+    if yml['ERCC_spike'] == False:
+        exp.tasks_complete.append('Spike')   
 
     #Fastq Folder
-    if 'Stage' not in exp.tasks_complete:
-        exp.fastq_folder= yml['Fastq_directory'] if yml['Fastq_directory'].endswith('/') else '{}/'.format(yml['Fastq_directory'])
-        if os.path.isdir(exp.fastq_folder) == False:
-            raise IOError("Can't Find Fastq Folder.")
+    exp.fastq_folder= yml['Fastq_directory'] if yml['Fastq_directory'].endswith('/') else '{}/'.format(yml['Fastq_directory'])
+    if (os.path.isdir(exp.fastq_folder) == False) and (yml['Tasks']['Align']):
+        raise IOError("Can't Find Fastq Folder.")
     
     #Hard clip
     if exp.trim != [0,0]:
@@ -327,6 +306,18 @@ def parse_yaml():
         #Normalization method
         if yml['Normalization'].lower() == 'ercc':
             exp.norm = 'ERCC' 
+            if yml['ERCC_spike'] == False:
+                spike_matrix_loc = yml['Spike_matrix']
+                if os.path.exists(spike_matrix_loc):
+                    print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
+                    if spike_matrix_loc.split('.')[-1] == 'txt':
+                        exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
+                    elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
+                        exp.spike_counts = pd.read_excel(spike_matrix_loc)
+                    else:
+                        raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
+                else:
+                    print("Cannot find spike matrix.", file=open(exp.log_file, 'a'))
             print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Normalization'].lower() == 'empirical':
             print('Normalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
@@ -540,7 +531,7 @@ def job_wait(id_list, job_log_folder, log_file):
         else:
             print('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(log_file, 'a'))
 
-def rout_write(x, folder=exp.job_folder):
+def rout_write(x, folder):
     '''
     function for setting r_out to print to file instead of jupyter
     rpy2.rinterface.set_writeconsole_regular(rout_write)
@@ -554,17 +545,17 @@ def stage(exp):
     '''
     
     #Stage Experiment Folder in Scratch
-    print('Staging in ' + exp.scratch+ '\n', file=open(exp.log_file, 'a'))
+    print('Staging in {}\n'.format(exp.scratch), file=open(exp.log_file, 'a'))
     
     #Copy Fastq to scratch fastq folder
-    if os.path.exists(exp.scratch + 'Fastq'):
-        rmtree(exp.scratch + 'Fastq')
-    copytree(exp.fastq_folder, exp.scratch + 'Fastq')
+    if os.path.exists('{}Fastq'.format(exp.scratch)):
+        rmtree('{}Fastq'.format(exp.scratch))
+    copytree(exp.fastq_folder, '{}Fastq'.format(exp.scratch))
 
     #change to experimental directory in scratch
     os.chdir(exp.scratch)
     
-    exp.fastq_folder= exp.scratch + 'Fastq/'
+    exp.fastq_folder= '{}Fastq/'.format(exp.scratch)
     
     exp.tasks_complete.append('Stage')
     
@@ -754,139 +745,130 @@ def spike(exp, backend='Agg'):
     '''
     plt.switch_backend(backend)
 
-    if exp.spike:
-        print("Processing with ERCC spike-in: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
-            
-        ERCC_folder=exp.scratch + 'ERCC/'
-        os.makedirs(ERCC_folder, exist_ok=True)
+    print("Processing with ERCC spike-in: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
+        
+    ERCC_folder=exp.scratch + 'ERCC/'
+    os.makedirs(ERCC_folder, exist_ok=True)
 
-        scan = 0
-        while scan < 2:
-            for number,sample in exp.samples.items():
-                #Scan if succesful during second loop.
-                if '{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder,sample=sample) not in glob.glob(ERCC_folder + '*.tab'):
-                    #Submit STAR alingment for spike-ins for each sample
-                    print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
-
-                    if os.path.isfile('{floc}{sample}_trim_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}_trim.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
-                        fname = '{floc}{sample}_trim'.format(floc=exp.fastq_folder, sample=sample)
-                    elif os.path.isfile('{floc}{sample}_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
-                        fname = '{floc}{sample}'.format(floc=exp.fastq_folder, sample=sample)
-                    else:
-                        print('Cannot find fastq files for spike-in alignment. \n', file=open(exp.log_file, 'a'))
-                        raise IOError('Cannot find fastq files for spike-in alignment.')
-
-                    if exp.seq_type == 'paired':
-                        spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
-                    elif exp.seq_type == 'single':
-                        spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
-
-                    command_list = ['module rm python',
-                                    'module rm perl',
-                                    'source activate RNAseq',
-                                    spike
-                                   ]
-
-                    exp.job_id.append(send_job(command_list=command_list, 
-                                               job_name= sample + '_ERCC',
-                                               job_log_folder=exp.job_folder,
-                                               q= 'general',
-                                               mem=5000,
-                                               log_file=exp.log_file,
-                                               project=exp.project,
-                                               threads=4
-                                              )
-                                     )
-
-            #Wait for jobs to finish
-            job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
-
-            scan += 1
-
+    scan = 0
+    while scan < 2:
         for number,sample in exp.samples.items():
-            sam_file='{ERCC_folder}{sample}_ERCCAligned.out.sam'.format(ERCC_folder=ERCC_folder,sample=sample)
-            if os.path.isfile(sam_file):
-                os.remove(sam_file)
+            #Scan if succesful during second loop.
+            if '{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder,sample=sample) not in glob.glob(ERCC_folder + '*.tab'):
+                #Submit STAR alingment for spike-ins for each sample
+                print('Aligning {sample} to spike-in.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
-        print('Spike-in alignment jobs finished.', file=open(exp.log_file, 'a'))
-        
-        ### Generate one matrix for all spike_counts
-        try:
-            ERCC_counts = glob.glob(ERCC_folder + '*_ERCCReadsPerGene.out.tab')
-            if len(ERCC_counts) != exp.sample_number:
-                print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
-                raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
-            else:
-                exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
-            
-                for number,sample in exp.samples.items():
-                    exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
-                exp.spike_counts = exp.spike_counts.iloc[4:,:]
-                exp.spike_counts.to_csv('{loc}ERCC.count.matrix.txt'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
+                if os.path.isfile('{floc}{sample}_trim_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}_trim.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
+                    fname = '{floc}{sample}_trim'.format(floc=exp.fastq_folder, sample=sample)
+                elif os.path.isfile('{floc}{sample}_R1.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)) or os.path.isfile('{floc}{sample}.fastq.gz'.format(floc=exp.fastq_folder, sample=sample)):
+                    fname = '{floc}{sample}'.format(floc=exp.fastq_folder, sample=sample)
+                else:
+                    print('Cannot find fastq files for spike-in alignment. \n', file=open(exp.log_file, 'a'))
+                    raise IOError('Cannot find fastq files for spike-in alignment.')
 
-        except:
-            print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
-            raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
-        
-        #check to see if there were any spike in reads, if not, change
-        if exp.spike_counts.loc['ERCC-00002',:].sum(axis=0) < 50:
-            print('ERCC has low or no counts, skipping further spike-in analysis.', file=open(exp.log_file,'a'))
-            exp.spike = False
+                if exp.seq_type == 'paired':
+                    spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}_R1.fastq.gz {fname}_R2.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
+                elif exp.seq_type == 'single':
+                    spike='STAR --runThreadN 4 --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ERCC --quantMode GeneCounts'.format(index=exp.genome_indicies['ERCC'],fname=fname,loc=ERCC_folder,sample=sample)
 
-        if exp.spike:
-            # Prep spike counts for plot (only if Nimer)
-            if exp.genome_indicies['ERCC_Mix'] != None:
-                # Filtering for counts with more than 5 counts in two samples
-                spike_counts = exp.spike_counts.copy()
-                spike_counts = spike_counts[spike_counts[spike_counts > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]
-                mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
-                mix = mix.rename(columns={'concentration in Mix 1 (attomoles/ul)': 'Mix_1',
-                                          'concentration in Mix 2 (attomoles/ul)': 'Mix_2'})
-                names = list(spike_counts.columns)
-                spike_counts = spike_counts.join(mix)
-                
-                merged_spike = pd.DataFrame(columns=['value','Mix_1','Mix_2'])
-                name = []
-                length = len(spike_counts)
-                for sample in names:
-                    merged_spike = pd.concat([merged_spike,
-                                             spike_counts[[sample,'Mix_1','Mix_2']].rename(columns={sample:'value'})],
-                                            ignore_index=True)
-                    name=name + [sample]*length
-                merged_spike['Sample']=name
-                merged_spike['log'] = merged_spike.value.apply(lambda x: np.log2(x))
-                merged_spike['log2_Mix_1']=np.log2(merged_spike.Mix_1)
-                merged_spike['log2_Mix_2']=np.log2(merged_spike.Mix_2)
+                command_list = ['module rm python',
+                                'module rm perl',
+                                'source activate RNAseq',
+                                spike
+                               ]
 
-                # Plot ERCC spike.
-                sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
-                M1 = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
-                M1.set_ylabels(label='spike-in counts (log2)')
-                M1.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
-                plt.title("ERCC Mix 1 Counts per Sample")
-                sns.despine()
-                M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
-                if __name__ == "__main__":
-                    plt.close()
+                exp.job_id.append(send_job(command_list=command_list, 
+                                           job_name= sample + '_ERCC',
+                                           job_log_folder=exp.job_folder,
+                                           q= 'general',
+                                           mem=5000,
+                                           log_file=exp.log_file,
+                                           project=exp.project,
+                                           threads=4
+                                          )
+                                 )
 
-                sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
-                M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
-                M2.set_ylabels(label='spike-in counts (log2)')
-                M2.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
-                plt.title("ERCC Mix 2 Counts per Sample")
-                sns.despine()
-                M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
-                if __name__ == "__main__":
-                    plt.close()
+        #Wait for jobs to finish
+        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
 
-            else:
-                print('Not plotting ERCC counts for other labs.', file=open(exp.log_file,'a'))
+        scan += 1
 
-        print("ERCC spike-in processing complete: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
+    for number,sample in exp.samples.items():
+        sam_file='{ERCC_folder}{sample}_ERCCAligned.out.sam'.format(ERCC_folder=ERCC_folder,sample=sample)
+        if os.path.isfile(sam_file):
+            os.remove(sam_file)
+
+    print('Spike-in alignment jobs finished.', file=open(exp.log_file, 'a'))
     
-    else:
-        print("No ERCC spike-in processing.\n", file=open(exp.log_file, 'a'))
+    ### Generate one matrix for all spike_counts
+    try:
+        ERCC_counts = glob.glob(ERCC_folder + '*_ERCCReadsPerGene.out.tab')
+        if len(ERCC_counts) != exp.sample_number:
+            print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
+            raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
+        else:
+            exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
+        
+            for number,sample in exp.samples.items():
+                exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
+            exp.spike_counts = exp.spike_counts.iloc[4:,:]
+            exp.spike_counts.to_csv('{loc}ERCC.count.matrix.txt'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
+
+    except:
+        print('Error generating spike_count matrix.', file=open(exp.log_file,'a'))
+        raise RaiseError('Error generating spike_count matrix. Make sure the file is not empty.')
     
+    #check to see if there were any spike in reads, if not, change
+    if exp.spike_counts.loc['ERCC-00002',:].sum(axis=0) < 50:
+        print('ERCC has low or no counts, skipping further spike-in analysis.', file=open(exp.log_file,'a'))
+        return exp 
+
+    if exp.genome_indicies['ERCC_Mix'] != None:
+        # Filtering for counts with more than 5 counts in two samples
+        spike_counts = exp.spike_counts.copy()
+        spike_counts = spike_counts[spike_counts[spike_counts > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]
+        mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
+        mix = mix.rename(columns={'concentration in Mix 1 (attomoles/ul)': 'Mix_1',
+                                  'concentration in Mix 2 (attomoles/ul)': 'Mix_2'})
+        names = list(spike_counts.columns)
+        spike_counts = spike_counts.join(mix)
+        
+        merged_spike = pd.DataFrame(columns=['value','Mix_1','Mix_2'])
+        name = []
+        length = len(spike_counts)
+        for sample in names:
+            merged_spike = pd.concat([merged_spike,
+                                     spike_counts[[sample,'Mix_1','Mix_2']].rename(columns={sample:'value'})],
+                                    ignore_index=True)
+            name=name + [sample]*length
+        merged_spike['Sample']=name
+        merged_spike['log'] = merged_spike.value.apply(lambda x: np.log2(x))
+        merged_spike['log2_Mix_1']=np.log2(merged_spike.Mix_1)
+        merged_spike['log2_Mix_2']=np.log2(merged_spike.Mix_2)
+
+        # Plot ERCC spike.
+        sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
+        M1 = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
+        M1.set_ylabels(label='spike-in counts (log2)')
+        M1.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+        plt.title("ERCC Mix 1 Counts per Sample")
+        sns.despine()
+        M1.savefig(ERCC_folder + 'ERCC_Mix_1_plot.png')
+        if __name__ == "__main__":
+            plt.close()
+
+        sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
+        M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1)
+        M2.set_ylabels(label='spike-in counts (log2)')
+        M2.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+        plt.title("ERCC Mix 2 Counts per Sample")
+        sns.despine()
+        M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
+        if __name__ == "__main__":
+            plt.close()
+
+    print("ERCC spike-in processing complete: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
+      
     exp.tasks_complete.append('Spike')
     return exp 
 
@@ -1226,8 +1208,8 @@ def GC_normalization(exp):
     '''
     pandas2ri.activate()
 
-    ri.set_writeconsole_regular(rout_write)
-    ri.set_writeconsole_warnerror(rout_write)
+    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
     edaseq = importr('EDASeq')
     as_df=ro.r("as.data.frame")
@@ -1279,8 +1261,8 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
     try:
         pandas2ri.activate()
         
-        ri.set_writeconsole_regular(rout_write)
-        ri.set_writeconsole_warnerror(rout_write)
+        ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+        ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
         deseq = importr('DESeq2')
         ruvseq = importr('RUVSeq')
@@ -1418,8 +1400,8 @@ def DESeq2(exp):
     
     pandas2ri.activate()
     
-    ri.set_writeconsole_regular(rout_write)
-    ri.set_writeconsole_warnerror(rout_write)
+    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
 
     deseq = importr('DESeq2')
     as_df=ro.r("as.data.frame")
@@ -1462,7 +1444,7 @@ def DESeq2(exp):
                                                        design=design
                                                       )
 
-        if exp.spike:
+        if exp.norm.lower() == 'ercc':
             print('Determining ERCC scaling vs Sample scaling using median of ratios of counts for rough comparison.  This may point out potentially problematic samples.\n', file=open(exp.log_file, 'a'))
             ERCC_data = round(exp.spike_counts[designs['all_samples']])
             ERCC_dds = deseq.DESeqDataSetFromMatrix(countData = ERCC_data.values, colData=colData, design=design)
@@ -1486,8 +1468,6 @@ def DESeq2(exp):
                 print('DESeq2 size factors: {}\n'.format(str(deseq2_vector)), file=open(exp.log_file,'a'))
             else:
                 print('\nERCC and deseq2 column lengths are different for {}'.format(comparison), file=open(exp.log_file,'a'))
-        else:
-            pass
 
         #Differential Expression
         if exp.norm.lower() == 'median-ratios':
@@ -1765,8 +1745,8 @@ def Sleuth(exp):
 
     pandas2ri.activate()
 
-    ri.set_writeconsole_regular(rout_write)
-    ri.set_writeconsole_warnerror(rout_write)
+    ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
+    ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
  
     sleuth = importr('sleuth') 
     biomart = importr('biomaRt')
