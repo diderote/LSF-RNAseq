@@ -1344,13 +1344,14 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
             RUV_dds = deseq.DESeq(RUV_dds)
         elif comparison == 'ALL':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1'))
+            RUV_dds = deseq.estimateSizeFactors_DESeqDataSet(RUV_dds)
 
         #generate normalized counts for pca
         counts_df = pandas2ri.ri2py(as_df(normCounts(RUVg_set)))
         counts_df.columns = RUV_data.drop(columns='name').columns
 
         if comparison == 'ALL':
-            plot_PCA(counts = counts_df.dropna(), colData= [], out_dir=plot_dir, name='{}_post-{}_RUV_raw_counts'.format(comparison, norm_type))
+            plot_PCA(counts = counts_df.dropna(), colData=[], out_dir=plot_dir, name='{}_post-{}_RUV_raw_counts'.format(comparison, norm_type))
         else:
             plot_PCA(counts = counts_df.dropna(), colData= colData, out_dir=plot_dir, name='{}_post-{}_RUV_raw_counts'.format(comparison, norm_type))
 
@@ -1369,7 +1370,11 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         RUV_normcounts = pandas2ri.ri2py(as_df(counts(RUV_dds, normalized=True)))
         RUV_normcounts.columns = RUV_data.drop(columns='name').columns
         RUV_normcounts.index = RUV_data.name
-        plot_PCA(counts = RUV_normcounts, colData=colData, out_dir= plot_dir, name= '{}_post-{}_RUV_normalized_counts'.format(comparison, norm_type))
+        if comparison == 'ALL':
+            plot_PCA(counts = RUV_normcounts, colData=[], out_dir= plot_dir, name= '{}_post-{}_RUV_normalized_counts'.format(comparison, norm_type))
+        else:
+            plot_PCA(counts = RUV_normcounts, colData= colData, out_dir=plot_dir, name='{}_post-{}_RUV_normalized_counts'.format(comparison, norm_type))
+
 
         rld = pandas2ri.ri2py_dataframe(assay(deseq.rlog(RUV_dds, blind=False)))
         rld.columns = RUV_data.drop(columns='name').columns
@@ -1499,10 +1504,7 @@ def DESeq2(exp):
             exp.de_results['{}_DE2_normCounts'.format(comparison)].index = data.index
 
         elif exp.norm.lower() == 'ercc':
-            exp.de_results['DE2_{}'.format(comparison)],
-            exp.de_results['{}_rlog_counts'.format(comparison)], 
-            exp.de_results['shrunkenLFC_{}'.format(comparison)], 
-            exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data, 
+            exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data, 
                                                                           design=designs['design'], 
                                                                           colData=colData, 
                                                                           norm_type='ERCC', 
@@ -1514,10 +1516,7 @@ def DESeq2(exp):
                                                                          )
     
         elif exp.norm.lower() == 'empirical':
-            exp.de_results['DE2_{}'.format(comparison)],
-            exp.de_results['{}_rlog_counts'.format(comparison)], 
-            exp.de_results['shrunkenLFC_{}'.format(comparison)], 
-            exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data,
+            exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data,
                                                                           design=designs['design'], 
                                                                           colData=colData, 
                                                                           norm_type='empirical', 
@@ -1583,8 +1582,7 @@ def DESeq2(exp):
                                      )
 
     if exp.norm.lower() == 'ercc':
-        exp.de_results['all_ERCC_rlog'],
-        exp.de_results['all_ERCC_normCounts']  = RUV(RUV_data = count_matrix, 
+        exp.de_results['all_ERCC_rlog'],exp.de_results['all_ERCC_normCounts']  = RUV(RUV_data = count_matrix, 
                                                      design=design, 
                                                      colData=colData, 
                                                      norm_type='ERCC', 
