@@ -966,7 +966,7 @@ def star(exp):
                 exp.count_matrix['name'] = exp.count_matrix.name.apply(lambda x: '{}_{}'.format(x, gene_dict[x]))
                 exp.count_matrix.index=exp.count_matrix.name
                 exp.count_matrix = exp.count_matrix.drop(columns=['name'])
-                exp.count_matrix.drop(columns=['name']).to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
+                exp.count_matrix.to_csv('{}Filtered_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
     except:
         print('Error generating count matrix.', file=open(exp.log_file,'a'))
@@ -1225,15 +1225,17 @@ def GC_normalization(exp):
     raw_counts = exp.count_matrix
     raw_counts['id']=raw_counts.index
     raw_counts['id']=raw_counts.id.apply(lambda x: x.split("_")[0].split(".")[0])
-    GC_genes = GC_content.split.tolist()
+    GC_genes = set(GC_content.split.tolist())
 
     #Keep only counts with GC data (based on latest ensembl biomart).  see EDAseq package and use 'biomart' after dropping ensembl name version.
-    GC_counts = round(raw_counts[raw_counts.id.apply(lambda x: x in GC_genes)].drop(columns='id'))
-    EDA_set = edaseq.newSeqExpressionSet(counts=GC_counts.values,featureData=GC_content)
+    GC_counts = round(raw_counts[raw_counts.id.apply(lambda x: x in GC_genes)])
+    GC_gene_set = set(GC_counts.id.tolist())
+    GC_content = GC_content[GC_content.split.apply(lambda x: x in GC_gene_set)]
+    EDA_set = edaseq.newSeqExpressionSet(counts=GC_counts.drop(columns='id').values,featureData=GC_content)
     gcNorm = edaseq.withinLaneNormalization(EDA_set, 'gc','loess')
     data_norm = ro.pandas2ri.ri2py_dataframe(normCounts(gcNorm))
     data_norm.index = GC_counts.index
-    data_norm.columns = GC_counts.columns
+    data_norm.columns = GC_counts.drop(columns='id').columns
     exp.gc_count_matrix = data_norm
 
     print('Finished GC normalization: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file,'a'))
@@ -1586,7 +1588,7 @@ def DESeq2(exp):
                                                      design=design, 
                                                      colData=colData, 
                                                      norm_type='ERCC', 
-                                                     ERCC_counts = round(exp.spike_counts[designs['all_samples']]), 
+                                                     ERCC_counts = round(exp.spike_counts), 
                                                      log=exp.log_file,
                                                      comparison='ALL',
                                                      plot_dir = exp.scratch + 'PCA/',
