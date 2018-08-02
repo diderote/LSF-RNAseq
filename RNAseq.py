@@ -585,7 +585,7 @@ def fastqc(exp):
                                    job_name= sample + '_fastqc',
                                    job_log_folder=exp.job_folder,
                                    q= 'general',
-                                   mem=1000,
+                                   mem=5000,
                                    log_file=exp.log_file,
                                    project=exp.project
                                   )
