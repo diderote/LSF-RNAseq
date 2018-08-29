@@ -4,13 +4,19 @@
 Nimerlab RNASeq Pipeline v0.6
 python3/utf-8
 
-Reads an experimetnal design yaml file (Version 0.5).
+Reads an experimetnal design yaml file (Version 0.6).
 Requires a conda environment 'RNAseq' made from environment.yml
 
 To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - if no chrname - skip bigwig generation
+    - add sleuth for mouse
+    - optimize STAR and updated rout_write
+    - hiseq option
+    - add compensations with LRT
+    - rewrite parsing function
+    - add papermill notebook implemenatation
 
 Author: Daniel Karl
 
@@ -23,14 +29,13 @@ import pickle
 import math
 import random
 import time
-import yaml
 from shutil import copy2,copytree,rmtree,move
 from datetime import datetime
 import subprocess as sub
+
+import yaml
 import pandas as pd
 import numpy as np
-import matplotlib as mpl
-mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib_venn import venn2, venn2_circles
@@ -44,51 +49,31 @@ import gseapy
 
 version=0.6
 
-class Experiment(object):
+class Experiment():
     '''
     Experiment object for pipeline
     '''
-    def __init__(self, scratch='', date='', name='', out_dir='', job_folder='', qc_folder='', 
-                  log_file='',fastq_folder='',spike=False, count_matrix=pd.DataFrame(), trim=[0,0],
-                  spike_counts=pd.DataFrame(),genome='',sample_number=int(), samples={}, 
-                  job_id=[],de_groups={},norm='Median-Ratios',designs={}, overlaps={}, gene_lists={},
-                  tasks_complete=[],de_results={},sig_lists={},overlap_results={},de_sig_overlap=False,
-                  genome_indicies={},project='', gc_norm=False, gc_count_matrix=pd.DataFrame(),
-                  seq_type='', alignment_mode='transcript'
-                 ):
-        self.scratch = scratch
-        self.date = date
-        self.name = name
-        self.out_dir =out_dir
-        self.job_folder=job_folder
-        self.qc_folder=qc_folder
-        self.log_file=log_file
-        self.fastq_folder=fastq_folder
-        self.spike = spike
-        self.count_matrix = count_matrix
-        self.trim=trim
-        self.spike_counts = spike_counts
-        self.genome = genome
-        self.sample_number =sample_number
-        self.samples = samples
-        self.job_id=job_id
-        self.de_groups = de_groups
-        self.norm = norm
-        self.designs=designs
-        self.overlaps = overlaps
-        self.gene_lists=gene_lists
-        self.tasks_complete=tasks_complete
-        self.de_results = de_results
-        self.sig_lists=sig_lists
-        self.overlap_results=overlap_results
-        self.de_sig_overlap = de_sig_overlap
-        self.genome_indicies=genome_indicies
-        self.project=project
-        self.gc_norm=gc_norm
-        self.gc_count_matrix = gc_count_matrix
-        self.seq_type=seq_type
-        self.alignment_mode=alignment_mode
 
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.norm = 'Median-Ratios'
+        self.alignment_mode='transcript'
+        self.spike = False
+        self.de_sig_overlap = False
+        self.gc_norm=False
+        self.trim=[0,0]
+        self.tasks_complete=[]
+        self.job_id=[]
+        self.samples = {}
+        self.de_groups = {}
+        self.designs={}
+        self.overlaps = {}
+        self.gene_lists={}
+        self.de_results = {}
+        self.sig_lists={}
+        self.overlap_results={}
+        self.genome_indicies={}
+            
 class RaiseError(Exception):
     pass
 
@@ -2422,5 +2407,7 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
+    import matplotlib as mpl
+    mpl.use('Agg')
     pipeline()
 
