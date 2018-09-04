@@ -48,7 +48,7 @@ Groups:
   Exp_2: 5,6,7,8,9 #Sample numbers in Exp Group 2 (leave empty if none)
   Cont_1: 10,11,12,13 #Sample numbers in Control Group 1
   Cont_2: 14,15,16,17,18 #Sample numbers in Control Group 2 (leave empty if none)
-Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical'
+Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
 Comparisons: #Groups to compare for differential expression.  Add or remove comparison lines
   Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1
   Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Ex. Compare Exp groups 1 and 2 to Controls (accounts for E1-E2 and C1-C2 differences)

@@ -49,7 +49,7 @@ import gseapy
 
 version=0.6
 
-class Experiment():
+class Experiment:
     '''
     Experiment object for pipeline
     '''
@@ -289,8 +289,8 @@ def parse_yaml():
         print("Parsing experimental design for differential expression...\n", file=open(exp.log_file, 'a'))
         
         #Normalization method
-        if yml['Normalization'].lower() == 'ercc':
-            exp.norm = 'ERCC' 
+        if yml['Normalization'].lower() == 'ercc' or yml['Normalization'].lower() == 'ercc_mixed':
+            exp.norm = yml['Normalization'].lower() 
             if yml['ERCC_spike'] == False:
                 spike_matrix_loc = yml['Spike_matrix']
                 if os.path.exists(spike_matrix_loc):
@@ -473,7 +473,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
 #BSUB -o {job_log_folder}{job_name_o}_logs_{rand_id}.stdout.%J
 #BSUB -e {job_log_folder}{job_name_e}_logs_{rand_id}.stderr.%J
 #BSUB -W 120:00
-#BSUB -n 1
+#BSUB -n {threads}
 #BSUB -q {q}
 #BSUB -P {project}
 
@@ -818,12 +818,12 @@ def spike(exp, backend='Agg'):
         names = list(spike_counts.columns)
         spike_counts = spike_counts.join(mix)
         
-        merged_spike = pd.DataFrame(columns=['value','Mix_1','Mix_2'])
+        merged_spike = pd.DataFrame(columns=['value','Mix_1','Mix_2','subgroup'])
         name = []
         length = len(spike_counts)
         for sample in names:
             merged_spike = pd.concat([merged_spike,
-                                     spike_counts[[sample,'Mix_1','Mix_2']].rename(columns={sample:'value'})],
+                                     spike_counts[[sample,'Mix_1','Mix_2','subgroup']].rename(columns={sample:'value'})],
                                     ignore_index=True)
             name=name + [sample]*length
         merged_spike['Sample']=name
@@ -851,6 +851,17 @@ def spike(exp, backend='Agg'):
         M2.savefig(ERCC_folder + 'ERCC_Mix_2_plot.png')
         if __name__ == "__main__":
             plt.close()
+
+        sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
+        setB = sns.lmplot(x='Common_ERCCs', y='log', hue='Sample', data=merged_spike[merged_spike.subgroup == 'B'], size=10, aspect=1)
+        M2.set_ylabels(label='spike-in counts (log2)')
+        M2.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+        plt.title("ERCC Subgroup B Counts per Sample")
+        sns.despine()
+        M2.savefig(ERCC_folder + 'ERCC_Subgroup_B_plot.png')
+        if __name__ == "__main__":
+            plt.close()
+
 
     print("ERCC spike-in processing complete: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), file=open(exp.log_file, 'a'))
       
@@ -914,7 +925,7 @@ def star(exp):
                                             job_name= sample + '_STAR',
                                             job_log_folder=exp.job_folder,
                                             q= 'bigmem',
-                                            mem=60000,
+                                            mem=50000,
                                             log_file=exp.log_file,
                                             project=exp.project,
                                             threads=4
@@ -1008,7 +1019,7 @@ def rsem(exp):
                                             job_name= sample + '_RSEM',
                                             job_log_folder=exp.job_folder,
                                             q= 'bigmem',
-                                            mem=60000,
+                                            mem=50000,
                                             log_file=exp.log_file,
                                             project=exp.project,
                                             threads=4
@@ -1501,6 +1512,21 @@ def DESeq2(exp):
                                                                           plot_dir = '{}PCA/'.format(exp.scratch),
                                                                           de= True
                                                                          )
+
+        elif exp.norm.lower() == 'ercc_mixed':
+            full_counts = exp.spike_counts[designs['all_samples']]
+            mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
+            subgroupB=mix[mix.subgroup == 'B'].index.tolist()
+            exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data, 
+                                                                          design=designs['design'], 
+                                                                          colData=colData, 
+                                                                          norm_type='ERCC', 
+                                                                          ERCC_counts = full_counts.loc[subgroupB], 
+                                                                          log=exp.log_file,
+                                                                          comparison=comparison,
+                                                                          plot_dir = '{}PCA/'.format(exp.scratch),
+                                                                          de= True
+                                                                         )
     
         elif exp.norm.lower() == 'empirical':
             exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data,
@@ -1514,7 +1540,7 @@ def DESeq2(exp):
                                                                           de=True
                                                                          )
         else:
-            raise RaiseError('Can only use "median-ratios", "ercc", or "empirical" for normalization of DESeq2.')
+            raise RaiseError('Can only use "median-ratios", "ercc", "ercc_mixed" or "empirical" for normalization of DESeq2.')
 
         #DESeq2 results
         exp.de_results['DE2_{}'.format(comparison)].sort_values(by='padj', ascending=True, inplace=True)

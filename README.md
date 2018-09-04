@@ -11,7 +11,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 	- Genome alignment using STAR counts with GENCODE annotations
 6. Generation of scaled (reads per million) bigwig files from alignment
 7. Optional within-sample GC normalization (useful for experiments across multiple sequencing runs).
-8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spikes or empirical negative controls.
+8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spike-ins or empirical negative controls.
 9. Differential expression using DESeq2 (both default and apeglm or ashr shrunken LFC are reported)
 10. PCA plots and expression boxplots of all and experimental samples, raw and normalized counts
 11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
@@ -27,6 +27,7 @@ Option Details:
 * Normalization: 
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
+	* ERCC_Mixed = Same as ERCC except used when ERCC Mix1 and Mix2 are used in the same experiment.  Will reduce the unwanted variance estimation to subgroup B (common concentrations in both mixes).
 	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation). Also reports ashr lfc shrunken values.
 * Alignment_Mode: Whether to align to transcriptome with RSEM-STAR (default) or to genome with STAR.
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
