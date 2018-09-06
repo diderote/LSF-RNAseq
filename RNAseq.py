@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 
 '''
-Nimerlab RNASeq Pipeline v0.6
-python3/utf-8
+Nimerlab RNASeq Pipeline
 
 Reads an experimetnal design yaml file (Version 0.6).
 Requires a conda environment 'RNAseq' made from environment.yml
+www.github.com/diderote/Nimerlab-RNAseq/
 
 To do:
     - ICA with chi-square with de groups
     - t-SNE (add as option)
-    - if no chrname - skip bigwig generation
     - add sleuth for mouse
     - optimize STAR and updated rout_write
     - hiseq option
@@ -18,9 +17,10 @@ To do:
     - rewrite parsing function
     - add papermill notebook implemenatation
 
-Author: Daniel Karl
-
 '''
+__author__ = 'Daniel L. Karl'
+__license__ = 'MIT'
+__version__ = '0.6'
 
 import os
 import re
@@ -32,6 +32,10 @@ import time
 from shutil import copy2,copytree,rmtree,move
 from datetime import datetime
 import subprocess as sub
+
+if __name__ == "__main__":
+    import matplotlib as mpl
+    mpl.use('Agg')
 
 import yaml
 import pandas as pd
@@ -158,6 +162,9 @@ def parse_yaml():
             exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
         print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
 
+    #Standed
+    exp.stranded = True if yml['Stranded'] else False
+
     #Tasks to complete
     if yml['Tasks']['Align'] == False:
         exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','Kallisto', 'Sleuth']
@@ -187,7 +194,6 @@ def parse_yaml():
         exp.genome_indicies['STAR'] = yml['STAR_index']
         exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
         exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
-        exp.genome_indicies['chrLen'] = yml['ChrNameLength_file']
         exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
         exp.genome_indicies['Gene_names'] = yml['Gene_names']
         if exp.genome == 'mm10':
@@ -198,20 +204,17 @@ def parse_yaml():
         if exp.genome == 'mm10':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/mouse'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/STARIndex'
-            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/KallistoIndex/GRCm38.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/gencode_gene_dict.pkl'
             exp.genome_indicies['GMT'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/mouse_gmts/'
         elif exp.genome == 'hg38':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/STARIndex'
-            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/RSEM-STARIndex/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Sequence/KallistoIndex/GRCh38.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/NCBI/GRCh38/Annotation/Archives/archive-2015-08-11-09-31-31/Genes.gencode/ENSG_NAME_dict.pkl'
         elif exp.genome == 'hg19':
             exp.genome_indicies['RSEM_STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/human'
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
-            exp.genome_indicies['chrLen'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/RSEM-STAR/chrNameLength.txt'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/gencode_gene_dict.pkl'
  
@@ -626,7 +629,7 @@ def fastq_screen(exp):
                                    mem=3000,
                                    log_file=exp.log_file,
                                    project=exp.project,
-                                   threads=4
+                                   threads=2
                                   )
                          )
         time.sleep(1)
@@ -694,7 +697,7 @@ def trim(exp):
                                            mem=1000,
                                            log_file=exp.log_file,
                                            project=exp.project,
-                                           threads=4
+                                           threads=2
                                           )
                                  )
             
@@ -769,7 +772,7 @@ def spike(exp, backend='Agg'):
                                            mem=5000,
                                            log_file=exp.log_file,
                                            project=exp.project,
-                                           threads=4
+                                           threads=2
                                           )
                                  )
 
@@ -853,12 +856,12 @@ def spike(exp, backend='Agg'):
             plt.close()
 
         sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
-        setB = sns.lmplot(x='Common_ERCCs', y='log', hue='Sample', data=merged_spike[merged_spike.subgroup == 'B'], size=10, aspect=1)
-        M2.set_ylabels(label='spike-in counts (log2)')
-        M2.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
+        setB = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike[merged_spike.subgroup == 'B'], size=10, aspect=1)
+        setB.set_ylabels(label='spike-in counts (log2)')
+        setB.set_xlabels(label='ERCC Mix (log2(attamoles/ul))')
         plt.title("ERCC Subgroup B Counts per Sample")
         sns.despine()
-        M2.savefig(ERCC_folder + 'ERCC_Subgroup_B_plot.png')
+        setB.savefig(ERCC_folder + 'ERCC_Subgroup_B_plot.png')
         if __name__ == "__main__":
             plt.close()
 
@@ -868,19 +871,28 @@ def spike(exp, backend='Agg'):
     exp.tasks_complete.append('Spike')
     return exp 
 
-def bam2bw(in_bam,out_bw,job_log_folder,name,genome):
-
-    script='{job_log_folder}{name}.py'.format(job_log_folder=job_log_folder,name=name)
-    print('#!/usr/bin/env python\nimport pybedtools\nimport subprocess', file=open(script,'w'))
-    print('kwargs=dict(bg=True,split=True,g="{genome}")'.format(genome=genome), file=open(script,'a'))
-    print('readcount=pybedtools.contrib.bigwig.mapped_read_count("{in_bam}")'.format(in_bam=in_bam), file=open(script,'a'))
-    print('_scale = 1 / (readcount / 1e6)\nkwargs["scale"] = _scale', file=open(script,'a'))
-    print('bedgraph = pybedtools.BedTool("{in_bam}").genome_coverage(**kwargs).sort()'.format(in_bam=in_bam), file=open(script,'a'))
-    print('cmds = ["bedGraphToBigWig", bedgraph.fn, "{genome}", "{out_bw}"]'.format(genome=genome,out_bw=out_bw), file=open(script,'a'))
-    print('p = subprocess.Popen(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)', file=open(script,'a'))
-    print('stdout, stderr = p.communicate()', file=open(script,'a'))
-
-    return script
+def bam2bw(in_bam,out_bw,job_log_folder,sample,project,stranded):
+    
+    if stranded:
+        command_list = ['module rm python share-rpms65',
+                        'source activate RNAseq',
+                        'bamCoverage --filterRNAstrand forward -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.fwd.bw',
+                        'bamCoverage --filterRNAstrand reverse --scaleFactor -1 -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.rev.bw'
+                        ]
+    else:
+        command_list = ['module rm python share-rpms65',
+                        'source activate RNAseq',
+                        'bamCoverage -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.bw'
+                        ]
+    exp.job_id.append(send_job(command_list=command_list,
+                               job_name= '{}_stranded_bw'.format(sample),
+                               job_log_folder=job_log_foler,
+                               q='general',
+                               mem='10000',
+                               threads=2,
+                               project=project
+                               )
+                     )
 
 def star(exp):
     '''
@@ -905,19 +917,9 @@ def star(exp):
                 elif exp.seq_type == 'single':
                     align='STAR --runThreadN 4 --outSAMtype BAM SortedByCoordinate --genomeDir {index} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {loc}{sample}_ --quantMode GeneCounts'.format(index=exp.genome_indicies['STAR'],fname=fname,loc=out_dir,sample=sample)
 
-                genome=exp.genome_indicies['chrLen']
-
-                scaled=bam2bw(in_bam='{}{}_Aligned.sortedByCoord.out.bam'.format(out_dir,sample),
-                              out_bw='{}{}.star.rpm.bw'.format(out_dir,sample),
-                              job_log_folder=exp.job_folder,
-                              name='{}_to_bigwig'.format(sample),
-                              genome=genome
-                             )
-
                 command_list = ['module rm python share-rpms65',
                                 'source activate RNAseq',
                                 align,
-                                'python {}'.format(scaled),
                                 'samtools index {}_Aligned.sortedByCoord.out.bam'.format(sample)
                                 ]
 
@@ -928,7 +930,7 @@ def star(exp):
                                             mem=50000,
                                             log_file=exp.log_file,
                                             project=exp.project,
-                                            threads=4
+                                            threads=2
                                             )
                                   )
 
@@ -940,6 +942,20 @@ def star(exp):
         scan += 1
 
     print('STAR alignment to genome finished.', file=open(exp.log_file, 'a'))
+
+     #Generate signal files
+
+    for sample in exp.samples.values():
+
+        print('Generating bigwig singal file for {}.\n'.format(sample), file=open(exp.log_file,'a'))
+
+        bam2bw(in_bam='{}{}_Aligned.sortedByCoord.out.bam'.format(out_dir,sample),
+               out_bw='{}{}.star.'.format(out_dir,sample),
+               job_log_folder=exp.job_folder,
+               sample=sample,
+               project=exp.project,
+               stranded=exp.stranded
+              )
     
     ### Generate one matrix for all counts
     try:
@@ -999,19 +1015,10 @@ def rsem(exp):
                     align= 'rsem-calculate-expression --star --star-gzipped-read-file --append-names --output-genome-bam --sort-bam-by-coordinate -p 4 {loc}{sample}_trim.fastq.gz {index} {sample}'.format(loc=exp.fastq_folder,index=exp.genome_indicies['RSEM_STAR'],sample=sample)
 
                 plot_model='rsem-plot-model {sample} {sample}.models.pdf' .format(sample=sample)  
-                genome=exp.genome_indicies['chrLen']
-
-                scaled=bam2bw(in_bam='{}{}.genome.sorted.bam'.format(out_dir,sample),
-                              out_bw='{}{}.rsem.rpm.bw'.format(out_dir,sample),
-                              job_log_folder=exp.job_folder,
-                              name='{}_to_bigwig'.format(sample),
-                              genome=genome
-                             )
 
                 command_list = ['module rm python share-rpms65',
                                 'source activate RNAseq',
                                 align,
-                                'python {}'.format(scaled),
                                 plot_model
                                 ]
 
@@ -1022,7 +1029,7 @@ def rsem(exp):
                                             mem=50000,
                                             log_file=exp.log_file,
                                             project=exp.project,
-                                            threads=4
+                                            threads=2
                                             )
                                   )
 
@@ -1032,6 +1039,20 @@ def rsem(exp):
         job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
     
         scan += 1
+
+    #Generate signal files
+
+    for sample in exp.samples.values():
+
+        print('Generating bigwig singal file for {}.\n'.format(sample), file=open(exp.log_file,'a'))
+
+        bam2bw(in_bam='{}{}.genome.sorted.bam'.format(out_dir,sample),
+               out_bw='{}{}.rsem.'.format(out_dir,sample),
+               job_log_folder=exp.job_folder,
+               sample=sample,
+               project=exp.project,
+               stranded=exp.stranded
+              )
 
     remove_files = ['genome.bam','transcript.bam','transcript.sorted.bam','transcrpt.sorted.bam.bai','wig']
     for number,sample in exp.samples.items():
@@ -1102,7 +1123,7 @@ def kallisto(exp):
 
             if '{loc}abundance.tsv'.format(loc=kal_out) not in glob.glob(kal_out + '*.tsv'):
                 if exp.seq_type == 'paired':
-                    align = 'kallisto quant --index={index} --output-dir={out} --threads=15 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(index=exp.genome_indicies['Kallisto'],out=kal_out,loc=exp.fastq_folder,sample=sample)
+                    align = 'kallisto quant --index={index} --output-dir={out} --threads=4 --bootstrap-samples=100 {loc}{sample}_trim_R1.fastq.gz {loc}{sample}_trim_R2.fastq.gz'.format(index=exp.genome_indicies['Kallisto'],out=kal_out,loc=exp.fastq_folder,sample=sample)
 
                 print('Aligning {sample} using Kallisto.'.format(sample=sample)+ '\n', file=open(exp.log_file, 'a'))
 
@@ -1118,7 +1139,8 @@ def kallisto(exp):
                                            q= 'general',
                                            mem=10000,
                                            log_file=exp.log_file,
-                                           project=exp.project
+                                           project=exp.project,
+                                           threads=2
                                           )
                                  )
 
@@ -2433,7 +2455,5 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
-    import matplotlib as mpl
-    mpl.use('Agg')
     pipeline()
 

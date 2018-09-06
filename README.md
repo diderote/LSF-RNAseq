@@ -9,7 +9,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 5. Alignment
 	- Transcriptome alignment using STAR with RSEM expected counts and optional Kallisto (not for single-end) with GENCODE annotations
 	- Genome alignment using STAR counts with GENCODE annotations
-6. Generation of scaled (reads per million) bigwig files from alignment
+6. Generation of scaled (counts per million per basepair) bigwig files from alignment (stranded or non-stranded)
 7. Optional within-sample GC normalization (useful for experiments across multiple sequencing runs).
 8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spike-ins or empirical negative controls.
 9. Differential expression using DESeq2 (both default and apeglm or ashr shrunken LFC are reported)
@@ -24,6 +24,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 Option Details:
 * Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
 * ERCC_spike: align reads to spike index using STAR.
+* Stranded: (yes/no) Will generate two stranded signal bigwig files if stranded.  Otherwise, will generate one per sample.
 * Normalization: 
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
@@ -47,7 +48,6 @@ Lab options if running outside of Nimer Lab access:
 * Kallisto_index: Specify location of previously generated index for alignment. Create using default Kallisto index function.
 * ERCC_STAR_index: Specify location of previously generated STAR index for spike-ins.
 	* To create:  donwload ERCC fasta and gtf, use STAR genomeGenerate function
-* ChrNameLength_file: path to RSEM_STAR generated ChrNameLength file in the RSEM_STAR_index or STAR_index folder.  For bigwig generation.
 * Project: project for job submission
 * GSEA_jar: Specify location of GSEA.jar (tested with GSEA-3.0.jar)
 * GSEA_mouse_gmts: Path to folder containing gmts using mouse ensembl gene IDs instead of human gene names. These can be found in the optional file folder.
@@ -113,7 +113,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 #### Helper functions:
 - RNAseq.parse_yaml() takes required -f yaml file and parses an new experimental object or loads an incomplete one     
 - RNAseq.plot_venn2(Series=pd.Series(), string_name_of_overlap='', folder='') scaled venn of an overlap
-- RNAseq.scaled_bigwig(in_bam='/path/to/bam',out_bw='/path/to/bw',job_log_folder=exp.job_folder,name='',genome=exp.genome) scales bam to bigwig rpm
+- RNAseq.bigwig2bam(in_bam='/path/to/bam',out_bw='/path/to/bw_name',job_log_folder=exp.job_folder,sample='',project=exp.project, stranded=bool) scales bam to bigwig cpm.
 - RNAseq.job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file) waits for submitted job to finish
 - RNAseq.send_job(command_list=[], job_name='', job_log_folder=exp.job_folder, q='', mem='', log_file=exp.log_file) sends job to LSF resource manager
 - RNAseq.enrichr(gene_list=[], description='', out_dir='')
