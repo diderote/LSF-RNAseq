@@ -265,7 +265,7 @@ def parse_yaml(experimental_file):
         exp.de_tests = {key:test for key,test in yml['Designs'].items() if test['Test_condition'] is not None}
         for key,test in exp.de_tests.items():
             all_conditions = test['All_conditions'].split(',')
-            all_samples = [exp.samples[int(sample)] for condition in all_conditions for group in condition for sample in exp.conditions[group]]
+            all_samples = [exp.samples[int(sample)] for sample in test['All_samples'].split(',')]
             exp.designs[key] = {'all_samples': all_samples}
             for condition in all_conditions:
                 exp.designs[key]['Condition_{}'.format(condition)] = [exp.samples[int(sample)] for group in condition for sample in exp.conditions[group]]
@@ -327,9 +327,7 @@ def parse_yaml(experimental_file):
         print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
         if str(len(list(exp.overlaps.keys()))) != 0:
             print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
-    else:
-        print("Can't process design for overlaps.  Continuing without overlap analyses.", file=open(exp.log_file, 'a'))
-        exp.tasks_complete.append('Overlaps')
+    
     
     #Initialized Process Complete List
     exp.tasks_complete.append('Parsed')
