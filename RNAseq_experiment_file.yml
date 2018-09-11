@@ -7,7 +7,6 @@ Tasks: #Default is 'All'
   Align: yes #if no, include path to count matrix below
   ERCC_align: no # yes to align ERCC spike-ins using STAR.
   Differential_Expression: yes 
-  Overlap_of_genes: yes #if starting at overlap, include path to gene lists below
   Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via RSEM-STAR or to genome via STAR (Default: Transcript)
   Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
   GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.

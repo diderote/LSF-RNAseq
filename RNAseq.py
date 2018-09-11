@@ -315,18 +315,16 @@ def parse_yaml(experimental_file):
     if exp.de_sig_overlap == False or exp.alignment_mode.lower() == 'transcript':
         exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
         
-    #Overlaps
-    if yml['Tasks']['Overlap_of_genes'] == False:
+    #DE Overlaps
+    for key, item in yml['Overlaps'].items():
+        if bool(item):   
+            exp.overlaps[key] = item.split('v')
+    if str(len(list(exp.overlaps.keys()))) != 0:
+        print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
+        print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
+    else:
         exp.tasks_complete.append('Overlaps')
         print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
-    else:
-        #DE Overlaps
-        for key, item in yml['Overlaps'].items():
-            if bool(item):   
-                exp.overlaps[key] = item.split('v')
-        print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
-        if str(len(list(exp.overlaps.keys()))) != 0:
-            print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
     
     
     #Initialized Process Complete List
