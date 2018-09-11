@@ -158,10 +158,10 @@ def parse_yaml(experimental_file):
         raise ValueError("Must specify whether sequence is paired or single end.")
     exp.seq_type = yml['Sequencing_type'].lower()
     exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth'] if exp.seq_type == 'single' else exp.tasks_complete
-    print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
 
     #Standed
     exp.stranded = True if yml['Stranded'] else False
+    print('Processing data as {}-end {} sequencing.'.format(exp.seq_type, ('stranded' if exp.stranded else 'non-stranded')), file =open(exp.log_file,'a'))
 
     #Tasks to complete
     if yml['Tasks']['Align'] == False:
@@ -255,7 +255,7 @@ def parse_yaml(experimental_file):
     print("Samples: ", file=open(exp.log_file, 'a'))
     for number,sample in exp.samples.items():
         print('{number}: {sample}'.format(number=number,sample=sample), file=open(exp.log_file, 'a'))
-    print('Processing {} samples.\n'.format(exp.sample_number), file=open(exp.log_file, 'a'))
+    print('\nProcessing {} samples.\n'.format(exp.sample_number), file=open(exp.log_file, 'a'))
 
     #Differential Expression Groups
     if yml['Tasks']['Differential_Expression']:
@@ -301,14 +301,14 @@ def parse_yaml(experimental_file):
                     exp.spike_counts = read_pd(spike_matrix_loc)
                 else:
                     print("Cannot find spike matrix.", file=open(exp.log_file, 'a'))
-            print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
+            print('\nNormalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
         elif yml['Normalization'].lower() == 'empirical':
-            print('Normalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
+            print('\nNormalizing samples for differential expression analysis using empirical negative controls for variance'+ '\n', file=open(exp.log_file, 'a'))
             exp.norm = 'empirical'
         elif yml['Normalization'].lower() == 'median-ratios':
-            print('Normalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
+            print('\nNormalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
         else:
-            print("I don't know the {} normalization method.  Using default median-ratios.\n".format(yml['Normalization']), file=open(exp.log_file, 'a'))
+            print("\nI don't know the {} normalization method.  Using default median-ratios.\n".format(yml['Normalization']), file=open(exp.log_file, 'a'))
 
     #Initialize DE sig overlaps
     exp.de_sig_overlap = True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False
@@ -320,11 +320,11 @@ def parse_yaml(experimental_file):
         if bool(item):   
             exp.overlaps[key] = item.split('v')
     if str(len(list(exp.overlaps.keys()))) != 0:
-        print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
         print('\nOverlapping ' + str(len(list(exp.overlaps.keys()))) + ' differential analysis comparison(s).', file=open(exp.log_file, 'a'))
+        print(str(exp.overlaps)+ '\n', file=open(exp.log_file, 'a'))
     else:
         exp.tasks_complete.append('Overlaps')
-        print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
+        print('Not performing signature overlaps', file=open(exp.log_file,'a'))
     
     
     #Initialized Process Complete List
