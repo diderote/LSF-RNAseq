@@ -19,7 +19,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 13. Heatmap of significantly differentially expressed genes using regularized log2 expresion counts.
 14. GO and KEGG enrichment of DE genes
 15. GSEA using ranked gene lists from DESeq2
-16. Overlap of multiple gene lists (including from differential expression) and scaled venn diagram output and GO enrichment.
+16. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.
 
 Option Details:
 * Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
@@ -38,7 +38,6 @@ Option Details:
 Other options:
 *  Spike_matrix: if not aligning and using ERCC, path to file containing ERCCs counts.
 *  Count_matrix: if not aligning, path to a file containing gene names as rows(first column), sample names as columns(top row), and gene counts in cells.
-*  Sig_matrix: if solely performing overlaps, path to file with samples names (top row) and gene names to overlap below. Overlap of over two columns will be performed (1v2, 3v4... etc)
 
 Lab options if running outside of Nimer Lab access:
 * Scratch folder: Folder for staging.
@@ -111,7 +110,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.GC_normalization()
 
 #### Helper functions:
-- RNAseq.parse_yaml() takes required -f yaml file and parses an new experimental object or loads an incomplete one     
+- RNAseq.parse_yaml(experimental_file) takes required yaml file and parses an new experimental object or loads an incomplete one from scratch     
 - RNAseq.plot_venn2(Series=pd.Series(), string_name_of_overlap='', folder='') scaled venn of an overlap
 - RNAseq.bigwig2bam(in_bam='/path/to/bam',out_bw='/path/to/bw_name',job_log_folder=exp.job_folder,sample='',project=exp.project, stranded=bool) scales bam to bigwig cpm.
 - RNAseq.job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file) waits for submitted job to finish
