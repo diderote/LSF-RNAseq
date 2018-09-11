@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 
 '''
-Nimerlab RNASeq Pipeline
+University of Miami - Pegasus Cluster RNASeq Pipeline
 
-Reads an experimetnal design yaml file (Version 0.6).
+Reads an experimental design yaml file (Version 0.7).
 Requires a conda environment 'RNAseq' made from environment.yml
 www.github.com/diderote/Nimerlab-RNAseq/
 
 To do:
+    - change designs to allow for non-bindary conditions ('Condition_A: a,a,b,b,c,c')
     - ICA with chi-square with de groups
     - t-SNE (add as option)
     - add sleuth for mouse
     - optimize STAR and updated rout_write
     - hiseq option
-    - add compensations with LRT
-    - rewrite parsing function
     - add papermill notebook implemenatation
 
 '''
 __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
-__version__ = '0.6'
+__version__ = '0.7'
 
 import os
 import re
@@ -32,12 +31,9 @@ import time
 from shutil import copy2,copytree,rmtree,move
 from datetime import datetime
 import subprocess as sub
-
-if __name__ == "__main__":
-    import matplotlib as mpl
-    mpl.use('Agg')
-
 import yaml
+import reprlib
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -51,7 +47,9 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri, r, globalenv, Formula
 import gseapy
 
-version=0.6
+
+#make decorator validator for file endings for parser.
+#def for pd read to read pandas
 
 class Experiment:
     '''
@@ -61,15 +59,12 @@ class Experiment:
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.norm = 'Median-Ratios'
-        self.alignment_mode='transcript'
         self.spike = False
         self.de_sig_overlap = False
         self.gc_norm=False
         self.trim=[0,0]
         self.tasks_complete=[]
         self.job_id=[]
-        self.samples = {}
-        self.de_groups = {}
         self.designs={}
         self.overlaps = {}
         self.gene_lists={}
@@ -77,21 +72,31 @@ class Experiment:
         self.sig_lists={}
         self.overlap_results={}
         self.genome_indicies={}
-            
+
+    def __repr__(self):
+        exclude = ['overlaps','job_id','name','designs']
+        experiment = '{}'.format(self.__dict__['name'])
+        for key,value in self.__dict__.items():
+            experiment += '\n\t{}: {}'.format(key,reprlib.repr(value)) if key not in exclude else ''
+        return 'Experiment({})'.format(experiment)   
+    
 class RaiseError(Exception):
     pass
+    
+def read_pd(file):
+    if (file.split('.')[-1] == 'txt') or (file.split('.')[-1] == 'tab'):
+        return pd.read_table(file, header= 0, index_col=0)
+    elif (file.split('.')[-1] == 'xls') or (file.split('.')[-1] == 'xlsx'):
+        return pd.read_excel(file)
+    else:
+        raise IOError("Cannot parse count matrix.  Make sure it is .txt, .xls, or .xlsx")
 
-def parse_yaml():
+def parse_yaml(experimental_file):
     '''
     Parse experimental info from yaml file
     '''    
-    import argparse
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
-    args = parser.parse_args()
-    
-    with open(args.experimental_file,'r') as file:
+    with open(experimental_file,'r') as file:
         yml = yaml.safe_load(file)
 
     #Make a new experimental object
@@ -100,13 +105,9 @@ def parse_yaml():
     #Setting Scratch folder
     if yml['Lab'].lower() == 'nimer':
         exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/{}/'.format(yml['Name'])
-        os.makedirs(exp.scratch, exist_ok=True)
     else:
-        try:
-            exp.scratch ='{}{}/'.format(yml['Scratch_folder'],yml['Name']) if yml['Scratch_folder'].endswith('/') else '{}/{}/'.format(yml['Scratch_folder'],yml['Name'])
-            os.makedirs(exp.scratch, exist_ok=True)
-        except:
-            raise RaiseError('Error making scratch/staging directory', file=open(exp.log_file,'a'))
+        exp.scratch ='{}{}/'.format(yml['Scratch_folder'],yml['Name']) if yml['Scratch_folder'].endswith('/') else '{}/{}/'.format(yml['Scratch_folder'],yml['Name'])
+    os.makedirs(exp.scratch, exist_ok=True)
     
     #check whether experiment has been attempted
     exp.name = yml['Name']   
@@ -137,7 +138,7 @@ def parse_yaml():
     #Log file
     exp.log_file = '{}{}-{}.log'.format(exp.out_dir,exp.name,exp.date)
     
-    print('Pipeline version {} run on {} \n'.format(str(version),exp.date), file=open(exp.log_file, 'w'))
+    print('Pipeline version {} run on {} \n'.format(str(__version__),exp.date), file=open(exp.log_file, 'w'))
     print('Beginning RNAseq Analysis: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
     print('Reading experimental file...\n', file=open(exp.log_file, 'a'))
     print("Pipeline output folder: {}\n".format(exp.out_dir), file=open(exp.log_file, 'a'))
@@ -147,20 +148,17 @@ def parse_yaml():
     os.makedirs(exp.job_folder, exist_ok=True)
 
     #Genome
-    if yml['Genome'].lower() not in ['hg38', 'mm10', 'hg19']:
+    exp.genome = yml['Genome'].lower() if yml['Genome'].lower() in ['hg38', 'mm10', 'hg19'] else None
+    if exp.genome is None:
         raise ValueError("Genome must be either hg38, hg19, or mm10.")
-    else:
-        exp.genome = yml['Genome'].lower()
-        print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
+    print('Processing data with: ' + str(exp.genome), file=open(exp.log_file, 'a'))
 
     #Sequencing type
     if yml['Sequencing_type'].lower() not in ['paired','single']:
         raise ValueError("Must specify whether sequence is paired or single end.")
-    else:
-        exp.seq_type = yml['Sequencing_type'].lower()
-        if exp.seq_type == 'single':
-            exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
-        print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
+    exp.seq_type = yml['Sequencing_type'].lower()
+    exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth'] if exp.seq_type == 'single' else exp.tasks_complete
+    print('Processing data as {}-end sequencing.'.format(exp.seq_type), file =open(exp.log_file,'a'))
 
     #Standed
     exp.stranded = True if yml['Stranded'] else False
@@ -173,18 +171,12 @@ def parse_yaml():
         if os.path.exists(count_matrix_loc):
             print("Count matrix found at {}".format(count_matrix_loc), file=open(exp.log_file, 'a'))
             print("Performing only DESeq2 on for DE", file=open(exp.log_file, 'a'))
-            if count_matrix_loc.split('.')[-1] == 'txt':
-                exp.count_matrix = pd.read_csv(count_matrix_loc, header= 0, index_col=0, sep="\t")
-            elif (count_matrix_loc.split('.')[-1] == 'xls') or (count_matrix_loc.split('.')[-1] == 'xlsx'):
-                exp.count_matrix = pd.read_excel(count_matrix_loc)
-            else:
-                raise IOError("Cannot parse count matrix.  Make sure it is .txt, .xls, or .xlsx")
+            exp.count_matrix = read_pd(count_matrix_loc)
         else:
             raise IOError("Count Matrix Not Found.")
     elif yml['Tasks']['Align'] == True:
         #Alignment mode. Default is transcript.
-        if yml['Tasks']['Alignment_Mode'].lower() == 'gene':
-            exp.alignment_mode = 'gene'
+        exp.alignment_mode = 'gene' if yml['Tasks']['Alignment_Mode'].lower() == 'gene' else 'transcript'
     else:
         raise IOError('Please specify whether or not to perform alignment.')   
     
@@ -217,7 +209,7 @@ def parse_yaml():
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/gencode_gene_dict.pkl'
- 
+            
     #GC_normalizaton
     if yml['Tasks']['GC_Normalization']:
         exp.gc_norm = True
@@ -243,7 +235,7 @@ def parse_yaml():
         print('Not performing differential expression analyses.', file=open(exp.log_file,'a'))
 
     #Spike
-    if yml['ERCC_spike'] == False:
+    if yml['Tasks']['ERCC_align'] == False:
         exp.tasks_complete.append('Spike')   
 
     #Fastq Folder
@@ -252,58 +244,61 @@ def parse_yaml():
         raise IOError("Can't Find Fastq Folder.")
     
     #Hard clip
-    if exp.trim != [0,0]:
-        exp.trim = yml['trim']
+    #exp.trim = yml['trim'] if yml['trim'] is not None else exp.trim
 
     #Project
-    if yml['Lab'].lower()=='nimer':
-        exp.project = 'nimerlab'
-    elif yml['Lab'].lower() == 'other':
-        if len(yml['Pegasus_Project']) == 0:
-            exp.project = ''
-        else:
-            exp.project = yml['Pegasus_Project']
-    
-    #Counts
-    if not 0 < yml['Total_sample_number'] < 33:
-        raise ValueError("This pipeline is only set up to handle up to 32 samples.")
-    else:
-        exp.sample_number = yml['Total_sample_number']
-        print('Processing ' + str(exp.sample_number) + ' samples.'+ '\n', file=open(exp.log_file, 'a'))
+    exp.project = 'nimerlab' if yml['Lab'].lower() == 'nimer' else yml['Pegasus_Project']
     
     #Sample Names
-    count = 1
-    for key,name in yml['Samples'].items():
-        if count <= exp.sample_number:
-            exp.samples[key]=name
-            count += 1
-        else:
-            break
+    exp.samples={key:name for key,name in yml['Samples'].items() if (name != 'Name') and (name is not None)}
+    exp.sample_number = len(exp.samples)
     print("Samples: ", file=open(exp.log_file, 'a'))
     for number,sample in exp.samples.items():
         print('{number}: {sample}'.format(number=number,sample=sample), file=open(exp.log_file, 'a'))
-    
+    print('Processing {} samples.\n'.format(exp.sample_number), file=open(exp.log_file, 'a'))
+
     #Differential Expression Groups
     if yml['Tasks']['Differential_Expression']:
-        for key, item in yml['Groups'].items():
-            if bool(item):
-                exp.de_groups[key] = [exp.samples[int(x)] for x in item.split(',')]
-            
         print("Parsing experimental design for differential expression...\n", file=open(exp.log_file, 'a'))
         
+        exp.conditions = {key:condition.split(',') for key, condition in yml['Conditions'].items() if condition is not None}
+        exp.de_tests = {key:test for key,test in yml['Designs'].items() if test['Test_condition'] is not None}
+        for key,test in exp.de_tests.items():
+            all_conditions = test['All_conditions'].split(',')
+            all_samples = [exp.samples[int(sample)] for condition in all_conditions for group in condition for sample in exp.conditions[group]]
+            exp.designs[key] = {'all_samples': all_samples}
+            for condition in all_conditions:
+                exp.designs[key]['Condition_{}'.format(condition)] = [exp.samples[int(sample)] for group in condition for sample in exp.conditions[group]]
+            exp.designs[key]['Test_condition'] = test['Test_condition'].split(',') 
+
+            if len(exp.designs[key]['Test_condition']) == 1:
+                exp.designs[key]['reduced'] = '~' + ' + '.join(['Condition_{}'.format(condition) for condition in all_conditions if condition not in exp.designs[key]['Test_condition']])
+                exp.designs[key]['design'] = '{} + Condition_{}'.format(exp.designs[key]['reduced'],exp.designs[key]['Test_condition'][0]) if len(all_conditions) > 1 else '~Condition_{}'.format(exp.designs[key]['Test_condition'][0])  
+            elif len(exp.designs[key]['Test_condition']) == 2:
+                exp.designs[key]['reduced'] = '~' + ' + '.join(['Condition_{}'.format(condition) for condition in all_conditions])
+                intersection='Condition_{}:Condition_{}'.format(exp.designs[key]['Test_condition'][0],exp.designs[key]['Test_condition'][1])
+                exp.designs[key]['design'] = '{} + {}'.format(exp.designs[key]['reduced'],intersection) if len(all_conditions) > 2 else '~{}'.format(intersection)
+            else:
+                raise ValueError('Cannot handle this experimental design.')
+            exp.designs[key]['reduced'] = '~1' if exp.designs[key]['reduced'] == '~' else exp.designs[key]['reduced']
+
+            exp.designs[key]['colData'] = pd.DataFrame({'Condition_{}'.format(condition): ['condition' if sample in exp.designs[key]['Condition_{}'.format(condition)] else 'not_condition' for sample in all_samples] for condition in all_conditions},
+                                                        index=all_samples) 
+            exp.designs[key]['Test_type'] = exp.de_tests[key]['Test_type'].lower()
+        
+        for name,items in exp.designs.items():
+            print('\n{}:'.format(name), file=open(exp.log_file,'a'))
+            print(str(items['colData']), file=open(exp.log_file,'a'))
+
+
         #Normalization method
         if yml['Normalization'].lower() == 'ercc' or yml['Normalization'].lower() == 'ercc_mixed':
             exp.norm = yml['Normalization'].lower() 
-            if yml['ERCC_spike'] == False:
+            if yml['Tasks']['ERCC_align'] == False:
                 spike_matrix_loc = yml['Spike_matrix']
                 if os.path.exists(spike_matrix_loc):
                     print("Spike Count matrix found at {}".format(spike_matrix_loc), file=open(exp.log_file, 'a'))
-                    if spike_matrix_loc.split('.')[-1] == 'txt':
-                        exp.spike_counts = pd.read_csv(spike_matrix_loc, header= 0, index_col=0, sep="\t")
-                    elif (spike_matrix_loc.split('.')[-1] == 'xls') or (spike_matrix_loc.split('.')[-1] == 'xlsx'):
-                        exp.spike_counts = pd.read_excel(spike_matrix_loc)
-                    else:
-                        raise IOError("Cannot parse spike count matrix.  Make sure it is .txt, .xls, or .xlsx")
+                    exp.spike_counts = read_pd(spike_matrix_loc)
                 else:
                     print("Cannot find spike matrix.", file=open(exp.log_file, 'a'))
             print('Normalizing samples for differential expression analysis using ERCC spike-in variance'+ '\n', file=open(exp.log_file, 'a'))
@@ -313,93 +308,7 @@ def parse_yaml():
         elif yml['Normalization'].lower() == 'median-ratios':
             print('Normalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.'+ '\n', file=open(exp.log_file, 'a'))
         else:
-            print("I don't know the " + yml['Normalization'] + ' normalization method.  Using default median-ratios.'+ '\n', file=open(exp.log_file, 'a'))
-    
-        for key, comparison in yml['Comparisons'].items():
-            if bool(comparison):
-
-                #determine comparison strategy for DESeq2
-                exp_groups = comparison.split('v')[0]
-                if len(exp_groups.split('-')) == 1:
-                    exp_group_type = 'simple'
-                elif len(exp_groups.split('-')) == 2:
-                    Exp1, Exp2 = exp_groups.split('-')[0], exp_groups.split('-')[1]
-                    exp_group_type = 'compensation'
-                else:
-                    raise ValueError("Cannot process {}. Check formating for E1 or E1-E2. Or too many groups for current pipline.".format(key))
-                
-                cont_groups = comparison.split('v')[1]
-                if len(cont_groups.split('-')) == 1:
-                    cont_group_type = 'simple'
-                elif len(cont_groups.split('-'))== 2:
-                    Cont1,Cont2 = cont_groups.split('-')[0], cont_groups.split('-')[1]
-                    cont_group_type = 'compensation'
-                else:
-                    raise ValueError("Cannot process {}. Check formating for C1 or C1-C2. Or too man comparisons.".format(key))
-            
-                #Check comparison for group consistency.
-                error = "Can't make a comparison with an unspecified group. Make sure your Comparisons match your Groups for DE"
-                groups = list(exp.de_groups.keys())
-                
-                exp.designs[key]={}
-                exp.designs[key]['all_samples']=[]
-                exp.designs[key]['main_comparison']=[]
-                exp.designs[key]['compensation']=[]
-                
-                if exp_group_type == 'simple':
-                    if exp_groups not in groups:
-                        raise ValueError(error)
-                    else:
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[exp_groups])
-                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[exp_groups]))
-                        if cont_group_type == 'simple':
-                            if cont_groups not in groups:
-                                raise ValueError(error)
-                            else:
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[cont_groups])
-                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[cont_groups]))
-                        elif cont_group_type == 'compensation':
-                            raise ValueError("Cannot batch compensate 1 Experimental group with 2 Control groups")
-                        else:
-                            raise ValueError(error)
-                        
-                        exp.designs[key]['design'] = "~main_comparison"
-                        exp.designs[key]['colData'] = pd.DataFrame({"main_comparison": exp.designs[key]['main_comparison']},
-                                                                    index=exp.designs[key]['all_samples'])
-                     
-                elif exp_group_type == 'compensation':
-                    if (Exp1 not in groups) or (Exp2 not in groups):
-                        raise ValueError(error)
-                    else:
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[Exp1])
-                        exp.designs[key]['all_samples'].extend(exp.de_groups[Exp2])
-                        exp.designs[key]['main_comparison'].extend(['Experimental']*len(exp.de_groups[Exp1] + exp.de_groups[Exp2]))
-                        if cont_group_type == 'simple':
-                            raise ValueError("Cannot batch compensate 2 Experimental groups with 1 Control groups.")
-                        elif cont_group_type == 'compensation':
-                            if (Cont1 not in groups) or (Cont2 not in groups):
-                                raise ValueError(error)
-                            else:
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[Cont1])
-                                exp.designs[key]['all_samples'].extend(exp.de_groups[Cont2])
-                                exp.designs[key]['main_comparison'].extend(['Control']*len(exp.de_groups[Cont1] + exp.de_groups[Cont2]))
-                        else:
-                            raise ValueError(error)                                     
-                        
-                        exp.designs[key]['compensation'].extend((['Group_1']*len(exp.de_groups[Exp1]) +
-                                                                 ['Group_2']*len(exp.de_groups[Cont1]) +
-                                                                 ['Group_1']*len(exp.de_groups[Exp2]) +
-                                                                 ['Group_2']*len(exp.de_groups[Cont2])))
-                        exp.designs[key]['design'] = "~compensation + main_comparison"
-                        exp.designs[key]['colData']= pd.DataFrame({"main_comparison": exp.designs[key]['main_comparison'],
-                                                                   "compensation": exp.designs[key]['compensation']},
-                                                                   index=exp.designs[key]['all_samples'])
-                else:
-                    raise ValueError(error)  
-
-        for name,items in exp.designs.items():
-            print('\n{}:'.format(name), file=open(exp.log_file,'a'))
-            print(str(items['colData']), file=open(exp.log_file,'a'))
+            print("I don't know the {} normalization method.  Using default median-ratios.\n".format(yml['Normalization']), file=open(exp.log_file, 'a'))
 
     #Initialize DE sig overlaps
     exp.de_sig_overlap = True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False
@@ -410,37 +319,8 @@ def parse_yaml():
     if yml['Tasks']['Overlap_of_genes'] == False:
         exp.tasks_complete.append('Overlaps')
         print('\nNot performing signature overlaps', file=open(exp.log_file,'a'))
-    elif (yml['Tasks']['Differential_Expression'] == False) and yml['Tasks']['Overlap_of_genes']:
-        gene_file=yml['Sig_matrix']
-        if os.path.exists(gene_file):
-            print("Gene lists found at {}".format(gene_file), file=open(exp.log_file,'a'))
-            if gene_file.split('.')[-1] == 'txt':
-                gene_fileDF = pd.read_csv(gene_file, header= 0, index_col=None, sep="\t")
-            elif (gene_file.split('.')[-1] == 'xls') or (gene_file.split('.')[-1] == 'xlsx'):
-                gene_fileDF = pd.read_excel(gene_file)
-            else:
-                raise IOError("Cannot parse gene lists file.  Make sure it is .txt, .xls, or .xlsx")
-            
-            overlap_number = 1
-            count = 0
-            if len(gene_fileDF.columns)%2 == 0:
-                for x in range(len(gene_fileDF.columns)/2):
-                    overlap_name='Gene_Overlap_{}'.format(str(overlap_number))
-                    list_1 = gene_fileDF.columns[count]
-                    list_2 = gene_fileDF.columns[count + 1]
-                    exp.gene_lists[overlap_name] = {}
-                    exp.gene_lists[overlap_name][list_1] = set(gene_fileDF[list_1].tolist())
-                    exp.gene_lists[overlap_name][list_2] = set(gene_fileDF[list_2].tolist())
-                    count += 2
-                    overlap_number = count/2
-                print('\nPerforming {} overlaps.'.format(str(count/2)), file=open(exp.log_file,'a'))
-            else:
-                raise IOError("Cannot parse gene lists file. Requires an even number of gene lists.")
-
-        else:
-            raise IOError("Gene List not found. If not doing differential expression, you need to provide an list of genes for overlaps.", file=opne(exp.log_file, 'a'))
-    #DE Overlaps
-    elif yml['Tasks']['Overlap_of_genes']:
+    else:
+        #DE Overlaps
         for key, item in yml['Overlaps'].items():
             if bool(item):   
                 exp.overlaps[key] = item.split('v')
@@ -450,7 +330,7 @@ def parse_yaml():
     else:
         print("Can't process design for overlaps.  Continuing without overlap analyses.", file=open(exp.log_file, 'a'))
         exp.tasks_complete.append('Overlaps')
-
+    
     #Initialized Process Complete List
     exp.tasks_complete.append('Parsed')
 
@@ -500,7 +380,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     os.system('bsub < {}'.format(job_path_name))
     print('sending job ID_{rand_id}...'.format(rand_id=str(rand_id)), file=open(log_file, 'a'))
     time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
-   
+    
     return rand_id
 
 def job_wait(id_list, job_log_folder, log_file):
@@ -588,7 +468,7 @@ def fastqc(exp):
     for f in fastqc_files:
         copy2(f,exp.qc_folder)
         os.remove(f)
-     
+        
     exp.tasks_complete.append('FastQC')
     
     print('FastQC complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
@@ -738,6 +618,10 @@ def spike(exp, backend='Agg'):
     ERCC_folder=exp.scratch + 'ERCC/'
     os.makedirs(ERCC_folder, exist_ok=True)
 
+    if not os.path.exists('{}Fastq'.format(exp.scratch)):
+        copytree(exp.fastq_folder, '{}Fastq'.format(exp.scratch))
+        exp.fastq_folder= '{}Fastq/'.format(exp.scratch)
+
     scan = 0
     while scan < 2:
         for number,sample in exp.samples.items():
@@ -795,10 +679,9 @@ def spike(exp, backend='Agg'):
             print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
             raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
         else:
-            exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
-        
+            exp.spike_counts = pd.DataFrame(index=read_pd(ERCC_counts[1].index))
             for number,sample in exp.samples.items():
-                exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
+                exp.spike_counts[sample] = read_pd('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample))[[3]]
             exp.spike_counts = exp.spike_counts.iloc[4:,:]
             exp.spike_counts.to_csv('{loc}ERCC.count.matrix.txt'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
 
@@ -815,7 +698,7 @@ def spike(exp, backend='Agg'):
         # Filtering for counts with more than 5 counts in two samples
         spike_counts = exp.spike_counts.copy()
         spike_counts = spike_counts[spike_counts[spike_counts > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]
-        mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
+        mix = read_pd(exp.genome_indicies['ERCC_Mix'])
         mix = mix.rename(columns={'concentration in Mix 1 (attomoles/ul)': 'Mix_1',
                                   'concentration in Mix 2 (attomoles/ul)': 'Mix_2'})
         names = list(spike_counts.columns)
@@ -871,7 +754,7 @@ def spike(exp, backend='Agg'):
     exp.tasks_complete.append('Spike')
     return exp 
 
-def bam2bw(in_bam,out_bw,job_log_folder,sample,project,stranded):
+def bam2bw(in_bam,out_bw,job_log_folder,sample,project,stranded,log_file):
     
     if stranded:
         command_list = ['module rm python share-rpms65',
@@ -884,15 +767,16 @@ def bam2bw(in_bam,out_bw,job_log_folder,sample,project,stranded):
                         'source activate RNAseq',
                         'bamCoverage -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.bw'
                         ]
-    exp.job_id.append(send_job(command_list=command_list,
-                               job_name= '{}_stranded_bw'.format(sample),
-                               job_log_folder=job_log_foler,
-                               q='general',
-                               mem='10000',
-                               threads=2,
-                               project=project
-                               )
-                     )
+    send_job(command_list=command_list,
+             job_name= '{}_stranded_bw'.format(sample),
+             job_log_folder=job_log_folder,
+             q='general',
+             mem='10000',
+             threads=2,
+             log_file=log_file,
+             project=project
+            )
+                 
 
 def star(exp):
     '''
@@ -954,6 +838,7 @@ def star(exp):
                job_log_folder=exp.job_folder,
                sample=sample,
                project=exp.project,
+               log_file=exp.log_file,
                stranded=exp.stranded
               )
     
@@ -964,10 +849,10 @@ def star(exp):
             print('At least one STAR alignment failed.', file=open(exp.log_file,'a'))
             raise RaiseError('At least one STAR alignment failed. Check scripts and resubmit.')
         else:
-            exp.count_matrix = pd.DataFrame(index=pd.read_csv(counts_glob[1], header=None, index_col=0, sep="\t").index)
+            exp.count_matrix = pd.DataFrame(index=read_pd(counts_glob[1]).index)
         
             for number,sample in exp.samples.items():
-                exp.count_matrix[sample] = pd.read_csv('{}{}_ReadsPerGene.out.tab'.format(out_dir,sample),header=None, index_col=0, sep="\t")[[3]]
+                exp.count_matrix[sample] = read_pd('{}{}_ReadsPerGene.out.tab'.format(out_dir,sample))[[3]]
             exp.count_matrix = exp.count_matrix.iloc[4:,:]
             exp.count_matrix.to_csv('{}ALL_STAR.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
             if os.path.isfile(exp.genome_indicies['Gene_names']):
@@ -1051,6 +936,7 @@ def rsem(exp):
                job_log_folder=exp.job_folder,
                sample=sample,
                project=exp.project,
+               log_file=exp.log_file,
                stranded=exp.stranded
               )
 
@@ -1092,7 +978,7 @@ def rsem(exp):
     #Wait for jobs to finish
     job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
     
-    counts = pd.read_csv('{}RSEM.count.matrix.txt'.format(out_dir), header=0, index_col=0, sep="\t")
+    counts = read_pd('{}RSEM.count.matrix.txt'.format(out_dir))
     counts.columns = columns
     counts.to_csv('{}RSEM.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
@@ -1239,7 +1125,7 @@ def GC_normalization(exp):
 
     print('Beginning within-lane GC length/content loess normalization for all samples: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file,'a'))
 
-    GC_content = pd.read_csv(exp.genome_indicies['GC_Content'], header=0, index_col=0, sep="\t")
+    GC_content = read_pd(exp.genome_indicies['GC_Content'])
     raw_counts = exp.count_matrix
     raw_counts['id']=raw_counts.index
     raw_counts['id']=raw_counts.id.apply(lambda x: x.split("_")[0].split(".")[0])
@@ -1261,7 +1147,7 @@ def GC_normalization(exp):
 
     return exp 
 
-def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir,de):
+def RUV(RUV_data,test_type,design,reduced,colData,norm_type,log, ERCC_counts, comparison, plot_dir,de):
 
     '''
     Performs normalization method for removing unwanted variance across samples using controls sequences.
@@ -1269,7 +1155,9 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
     Inputs
     ------
     RUV_data = pandas dataframe of counts
-    design = string of design (ie '~main_comparison')
+    type_type = 'lrt' or 'wald'
+    design = string of design (ie '~Condition_A')
+    reduced = string of reduced design (for use if using lrt)
     colData = pandas dataframe of DESeq2 format colData or empty list if compensating with all.
     norm_type = string 'ercc' or 'empirical'
     log = log file for output printing
@@ -1353,18 +1241,16 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
 
         else:
             raise RaiseError('RUV() takes only "ercc" or "empirical" as options.')
-
-        #Differential expression (Wald DESeq2) to account for scaled variances between samples
-        if design == '~main_comparison':
-            RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + main_comparison'))
-            RUV_dds = deseq.DESeq(RUV_dds)
-        #Differential expression (Wald DESeq2) to account for scaled variances between samples
-        elif design == '~compensation + main_comparison':
-            RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + compensation + main_comparison'))
-            RUV_dds = deseq.DESeq(RUV_dds)
-        elif comparison == 'ALL':
+######
+        #Differential expression (wald or lrt) to account for scaled variances between samples
+        if comparison == 'ALL':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1'))
             RUV_dds = deseq.estimateSizeFactors_DESeqDataSet(RUV_dds)
+        else:
+            RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1 + {}'.format(design.split('~')[-1])))
+            RUV_dds = deseq.DESeq(RUV_dds)
+            if test_type == 'lrt':
+                RUV_dds = deseq.DESeq(RUV_dds,test='LRT',reduced=ro.Formula('~W1' if reduced == '~1' else '~W1 + {}'.format(reduced.split('~')[-1])))
 
         #generate normalized counts for pca
         counts_df = pandas2ri.ri2py(as_df(normCounts(RUVg_set)))
@@ -1378,12 +1264,11 @@ def RUV(RUV_data,design,colData,norm_type,log, ERCC_counts, comparison, plot_dir
         if de:
             #extract results and relabel samples and genes
             print('{} results type: '.format(comparison), file = open(log, 'a'))
-            print(head(results(RUV_dds), 0), file = open(log,'a'))
 
-            results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']))))
+            results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1]),'condition','not_condition']))))
             results.index = RUV_data.name
 
-            lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['main_comparison','Experimental','Control']), type='ashr')))
+            lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1]),'condition','not_condition']), type='ashr')))
             lfc.index = RUV_data.name
             print('Switched to ashr method for lfcShrinkage for {} with RUV normalizaiton.'.format(comparison), file=open(log,'a'))
 
@@ -1498,18 +1383,21 @@ def DESeq2(exp):
         if exp.norm.lower() == 'median-ratios':
             print('Using DESeq2 standard normalization of scaling by median of the ratios of observed counts.', file=open(exp.log_file, 'a'))
             
-            print('Performing Wald Test for differential expression for {}\n'.format(comparison), file=open(exp.log_file, 'a'))
+            print('Performing {} test for differential expression for {}\n'.format(design['Test_type'],comparison), file=open(exp.log_file, 'a'))
             dds[comparison] = deseq.DESeq(dds[comparison])
             
+            if designs['Test_type'] == 'lrt':
+                reduced = ro.Formula(designs['reduced'])
+                dds[comparison] = deseq.DESeq(dds[comparison],test = 'LRT',reduced=reduced)
+            
             print('{} results type: '.format(comparison), file = open(exp.log_file, 'a'))
-            print(head(results(dds[comparison]), 0), file = open(exp.log_file,'a'))
 
             #get results
-            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['main_comparison','Experimental','Control']))))
+            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['{}'.format(design.split(' ')[-1]),'condition','not_condition']))))
             exp.de_results['DE2_{}'.format(comparison)].index = data.index
             
             #get shrunken lfc (apeglm) method)
-            exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('main_comparison_Experimental_vs_Control'), type='apeglm')))
+            exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('{}_{}_vs_{}'.format('{}'.format(design.split(' ')[-1]),'condition','not_condition')), type='apeglm')))
             exp.de_results['shrunkenLFC_{}'.format(comparison)].index = data.index
             print('Using apeglm method for lfc shrinkage for {}.'.format(comparison), file=open(exp.log_file, 'a'))
 
@@ -1525,7 +1413,9 @@ def DESeq2(exp):
 
         elif exp.norm.lower() == 'ercc':
             exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data, 
-                                                                          design=designs['design'], 
+                                                                          test_type=designs['Test_type'],
+                                                                          design=designs['design'],
+                                                                          reduced=designs['reduced'],
                                                                           colData=colData, 
                                                                           norm_type='ERCC', 
                                                                           ERCC_counts = exp.spike_counts[designs['all_samples']], 
@@ -1537,10 +1427,12 @@ def DESeq2(exp):
 
         elif exp.norm.lower() == 'ercc_mixed':
             full_counts = exp.spike_counts[designs['all_samples']]
-            mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
+            mix = read_pd(exp.genome_indicies['ERCC_Mix'])
             subgroupB=mix[mix.subgroup == 'B'].index.tolist()
-            exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data, 
-                                                                          design=designs['design'], 
+            exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data,
+                                                                          test_type=designs['Test_type'],
+                                                                          design=designs['design'],
+                                                                          reduced=designs['reduced'],
                                                                           colData=colData, 
                                                                           norm_type='ERCC', 
                                                                           ERCC_counts = full_counts.loc[subgroupB], 
@@ -1552,7 +1444,9 @@ def DESeq2(exp):
     
         elif exp.norm.lower() == 'empirical':
             exp.de_results['DE2_{}'.format(comparison)],exp.de_results['{}_rlog_counts'.format(comparison)], exp.de_results['shrunkenLFC_{}'.format(comparison)], exp.de_results['{}_DE2_normCounts'.format(comparison)]  = RUV(RUV_data = data,
+                                                                          test_type=designs['Test_type'],
                                                                           design=designs['design'], 
+                                                                          reduced=designs['reduced'],
                                                                           colData=colData, 
                                                                           norm_type='empirical', 
                                                                           ERCC_counts = None, 
@@ -1618,7 +1512,9 @@ def DESeq2(exp):
 
     if exp.norm.lower() == 'ercc':
         exp.de_results['all_ERCC_rlog'],exp.de_results['all_ERCC_normCounts']  = RUV(RUV_data = count_matrix, 
-                                                     design=design, 
+                                                     test_type='',
+                                                     design=design,
+                                                     reduced=design,
                                                      colData=colData, 
                                                      norm_type='ERCC', 
                                                      ERCC_counts = round(exp.spike_counts), 
@@ -1780,7 +1676,7 @@ def Sleuth(exp):
 
     #ri.set_writeconsole_regular(rout_write(folder=exp.job_folder))
     #ri.set_writeconsole_warnerror(rout_write(folder=exp.job_folder))
- 
+    
     sleuth = importr('sleuth') 
     biomart = importr('biomaRt')
     dplyr = importr('dplyr', on_conflict="warn")
@@ -1829,7 +1725,7 @@ def Sleuth(exp):
         elif exp.genome == 'hg19':
             mart = biomart.useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl", host = 'useast.ensembl.org')
         else:
-           raise RaiseError('Error in sleuth, pipeline only handles hg38,hg19, and mm10')
+            raise RaiseError('Error in sleuth, pipeline only handles hg38,hg19, and mm10')
 
         t2g = biomart.getBM(attributes = ro.StrVector(("ensembl_transcript_id_version", "ensembl_gene_id","external_gene_name")), mart=mart)
         t2g = dplyr.rename(t2g, target_id = 'ensembl_transcript_id_version', ens_gene = 'ensembl_gene_id', ext_gene = 'external_gene_name')
@@ -1917,7 +1813,7 @@ def sigs(exp):
 
         if exp.de_sig_overlap:
             print('Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2 for {comparison}.'.format(comparison=comparison), file=open(exp.log_file,'a'))
-       
+            
             exp.sig_lists[comparison] = {}
             DE_results=exp.de_results['DE2_{}'.format(comparison)]
             SL_results=exp.de_results['SL_{}'.format(comparison)]
@@ -2180,7 +2076,7 @@ def plot_venn2(Series, string_name_of_overlap, folder, backend='Agg'):
            }
     
     plt.rc('font', **font)
-  
+    
     #make venn
     venn_plot = venn2(subsets=(Series.iloc[0], Series.iloc[1], Series.iloc[2]), set_labels = Series.index.tolist())
     patch=['10','01','11']
@@ -2196,8 +2092,7 @@ def plot_venn2(Series, string_name_of_overlap, folder, backend='Agg'):
         circle.set_edgecolor(color)
         circle.set_alpha(0.8)
         circle.set_linewidth(3)
-
-     
+        
     plt.title(string_name_of_overlap + " Overlaps")
     plt.tight_layout()
     plt.savefig('{}{}-overlap-{:%Y-%m-%d}.svg'.format(folder,string_name_of_overlap, datetime.now()))
@@ -2445,8 +2340,8 @@ def diff_exp(exp):
             pickle.dump(exp, experiment)
         raise RaiseError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
 
-def pipeline():
-    exp = parse_yaml()
+def pipeline(experimental_file):
+    exp = parse_yaml(experimental_file)
     exp = preprocess(exp)
     exp = align(exp)
     exp = diff_exp(exp)
@@ -2455,5 +2350,11 @@ def pipeline():
     finish(exp)
 
 if __name__ == "__main__":
-    pipeline()
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
+    args = parser.parse_args()
+    
+    pipeline(args.experimental_file)
 

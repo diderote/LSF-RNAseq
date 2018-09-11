@@ -1,20 +1,20 @@
-#### Vestion0.6 #####
+#### Vestion0.7 #####
 Name: 'Experiment_Name' #Experiment name
 Restart: False # if True, start over even if an incomplete pickle file is found in in the staging folder. (Default: False)
-Output_directory: /projects/ctsi/nimerlab/to/directory/ #Will create a folder with experiment ame in this folder with final results.
+Output_directory: /path/to/output/directory #Will create a folder with experiment ame in this folder with final results.
 #### Task Options ####
 Tasks: #Default is 'All'
   Align: yes #if no, include path to count matrix below
+  ERCC_align: no # yes to align ERCC spike-ins using STAR.
   Differential_Expression: yes 
   Overlap_of_genes: yes #if starting at overlap, include path to gene lists below
   Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via RSEM-STAR or to genome via STAR (Default: Transcript)
   Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
   GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.
 #### Experimental Setup ####
-Total_sample_number: 12 #Total number (max 22)
 Samples:   
-  1: 'Name' #Sample1
-  2: 'Name' #Sample2
+  1: 'Name' # Add more if needed
+  2: 'Name' #
   3: 'Name' #
   4: 'Name' #
   5: 'Name' #
@@ -46,30 +46,42 @@ Samples:
   31: 'Name' #
   32: 'Name' #
 #### Alignment Options ####
-ERCC_spike: # yes to align ERCC spike-ins using STAR.
-Genome: #hg38, hg19 or mm10
-Fastq_directory: /path/to/fastq/
+Genome: hg38 #hg38, hg19 or mm10
+Fastq_directory: /path/to/fastq/directory/
 Sequencing_type: paired #'paired' or 'single'
-Stranded: yes # or no
+Stranded: yes # or no if library prep was stranded
 #### Differential Expression Options ####
-Groups:
-  Exp_1: 1,2,3,4 #Sample numbers in Exp Group 1
-  Exp_2: 5,6,7,8,9 #Sample numbers in Exp Group 2 (leave empty if none)
-  Cont_1: 10,11,12,13 #Sample numbers in Control Group 1
-  Cont_2: 14,15,16,17,18 #Sample numbers in Control Group 2 (leave empty if none)
 Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
-Comparisons: #Groups to compare for differential expression.  Add or remove comparison lines
-  Comparison_1: Exp_1vCont_1 #Ex. Compare Experimental group 1 vs Control group 1
-  Comparison_2: Exp_1-Exp_2vCont_1-Cont_2 # Ex. Compare Exp groups 1 and 2 to Controls (accounts for E1-E2 and C1-C2 differences)
+Conditions: #Add as many as needed
+  A: 1,2,3 
+  B: 4,5,6
+  C: 7,8,9
+  D: 10,11,12
+Designs: #Add as many as needed.  All condtions are binary for now.
+  Test_1: # equivalent to ~Condition_A (ex. treated v non_treated in condition A)
+    Test_type: Wald
+    All_conditions: D
+    Test_conditions: D
+  Test_2: # equivalent to ~Condition_B + Condition_A (where Condition_B is a batch effect)
+    Test_type: Wald #or LRT
+    All_conditions: A,B 
+    Test_condition: A
+  Test_4: # equivalent to ~Condition_A + Condition_B + Condition_C with reduced ~Condition_A + Condition_B
+    Test_type: LRT
+    All_conditions: A,B,C
+    Test_condition: C
+  Test_3: # equivalent to ~Condition_C + Condition_B + Condition_A + Condition_A:Condition_B
+    Test_type: Wald
+    All_conditions: A,B,C
+    Test_condition: A,B # Interaction
 Overlaps:
-  Overlap_1: Comparison_1vComparison_2 #Overlap of Differential Genes.  Leave Blank if none needed.
-#### Optional ####
+  Overlap_1: Test_1vTest_2 #Overlap of Differential Genes.  Leave Blank if none needed.
+#### Optional Preprocessed Data Inputs ####
 Count_matrix: /path/to/count/matrix.txt #or xls.
 Spike_matrix: /path/to/spike/count/matrix.txt
-Sig_matrix: /path/to/sig/matrix.xls #xls file with name in row 1. Will overlap every two columns (ie.1v2,3v4..etc)
-#### Lab Options ####
+#### Lab and File Options ####
 Lab: Nimer #default 'Nimer'. If 'other', fill in extra details below
-Scratch_folder: /path/to/scratch/  #staging directory
+Scratch_folder: /path/to/scratch/folder  #staging directory
 RSEM_STAR_index: /path/to/genome/index/folder/name
 STAR_index: /path/to/genome/index/folder/name
 Kallisto_index: /path/to/genome/index/folder/name
