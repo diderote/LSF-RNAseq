@@ -59,7 +59,7 @@ Conditions: #Add as many as needed
 Designs: #Add as many as needed.  All condtions are binary for now.
   Test_1: # equivalent to ~Condition_A (ex. treated v non_treated in condition A)
     Test_type: Wald # or LRT
-    Test_conditions: D #main condition of intereset for de_test
+    Test_condition: D #main condition of intereset for de_test
     All_conditions: D #All conditions of interest used for this test (batch plus main)
     All_samples: 1,2,3,4,5,6 #All samples used for this test
   Test_2: # equivalent to ~Condition_B + Condition_A (where Condition_B is a batch effect)
