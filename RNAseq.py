@@ -1980,8 +1980,8 @@ def gsea_barplot(out_dir,pos_file,neg_file,gmt_name,max_number=20):
     neg = pd.read_table(neg_file).head(max_number) if os.path.isfile(neg_file) else pd.DataFrame(columns=['FDR q-val'])
     neg[gmt_name] = [' '.join(name.split('_')[1:]) for name in neg.NAME.tolist()]
     
-    sns.set(context='paper', font='Arial',font_scale=.95, style='white', rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
-    fig,(ax1,ax2) = dk.plt.subplots(ncols=1, nrows=2)
+    sns.set(context='paper', font='Arial',font_scale=.9, style='white', rc={'figure.dpi': 300, 'figure.figsize':(8,6)})
+    fig,(ax1,ax2) = plt.subplots(ncols=1, nrows=2)
     fig.suptitle('{} GSEA enrichment\n(q<0.05, max {})'.format(gmt_name, max_number))
     
     if len(pos[pos['FDR q-val'] < 0.05]) > 0:
@@ -1994,7 +1994,11 @@ def gsea_barplot(out_dir,pos_file,neg_file,gmt_name,max_number=20):
         DN.set_title('Negative Enrichment')
         sns.despine()
     
-    plt.tight_layout(h_pad=2,w_pad=1)
+    try:
+        plt.tight_layout(h_pad=1,w_pad=1)
+    except ValueError:
+        pass
+
     plt.subplots_adjust(top=0.88)
     file='{}{}_GSEA_NES_plot.png'.format(out_dir,gmt_name)
     fig.savefig(file, dpi=300)
