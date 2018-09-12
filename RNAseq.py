@@ -551,7 +551,7 @@ def trim(exp):
                     move_on = False
             
             if move_on:
-                print('\nTrimming {sample}: '.format(sample=sample), file=open(exp.log_file, 'a'))
+                print('Trimming {sample}: '.format(sample=sample), file=open(exp.log_file, 'a'))
 
                 if exp.seq_type == 'paired':
                     trim_u=str(exp.trim[0])
@@ -675,7 +675,7 @@ def spike(exp, backend='Agg'):
             print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
             raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
         else:
-            exp.spike_counts = pd.DataFrame(index=read_pd(ERCC_counts[1].index))
+            exp.spike_counts = pd.DataFrame(index=ERCC_counts[1].index)
             for number,sample in exp.samples.items():
                 exp.spike_counts[sample] = read_pd('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample))[[3]]
             exp.spike_counts = exp.spike_counts.iloc[4:,:]
@@ -1237,7 +1237,7 @@ def RUV(RUV_data,test_type,design,reduced,colData,norm_type,log, ERCC_counts, co
 
         else:
             raise RaiseError('RUV() takes only "ercc" or "empirical" as options.')
-######
+
         #Differential expression (wald or lrt) to account for scaled variances between samples
         if comparison == 'ALL':
             RUV_dds = deseq.DESeqDataSetFromMatrix(countData=counts(RUVg_set), colData=pdata(RUVg_set), design=ro.Formula('~W_1'))
@@ -1957,6 +1957,51 @@ def GO_enrich(exp):
     
     return exp
 
+def gsea_barplot(out_dir,pos_file,neg_file,gmt_name,max_number=20):
+    '''
+    Inputs
+    ------
+    out_dir: directory output or '' for current directory
+    pos_file: GSEA positive enrichment .xls file
+    neg_file: GSEA negative enrichment .xls file
+    gmt_name: name of enrichment (ex: Hallmarks)
+    max_number: max number of significant sets to report (default 20)
+
+    Returns
+    -------
+    string of save file
+
+    '''
+
+    out_dir = out_dir if out_dir.endswith('/') else '{}/'.format(out_dir)
+    out_dir = '' if out_dir == '/' else out_dir 
+    pos = pd.read_table(pos_file).head(max_number) if os.path.isfile(pos_file) else pd.DataFrame(columns=['FDR q-val'])
+    pos[gmt_name] = [' '.join(name.split('_')[1:]) for name in pos.NAME.tolist()]
+    neg = pd.read_table(neg_file).head(max_number) if os.path.isfile(neg_file) else pd.DataFrame(columns=['FDR q-val'])
+    neg[gmt_name] = [' '.join(name.split('_')[1:]) for name in neg.NAME.tolist()]
+    
+    sns.set(context='paper', font='Arial',font_scale=.95, style='white', rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
+    fig,(ax1,ax2) = dk.plt.subplots(ncols=1, nrows=2)
+    fig.suptitle('{} GSEA enrichment\n(q<0.05, max {})'.format(gmt_name, max_number))
+    
+    if len(pos[pos['FDR q-val'] < 0.05]) > 0:
+        UP = sns.barplot(data=pos[pos['FDR q-val'] < 0.05], x = 'NES', y=gmt_name, color='firebrick', ax=ax1)
+        UP.set_title('Positive Enrichment')
+        sns.despine()
+       
+    if len(neg[neg['FDR q-val'] < 0.05]) > 0:
+        DN = sns.barplot(data=neg[neg['FDR q-val'] < 0.05], x = 'NES', y=gmt_name, color='steelblue', ax=ax2)
+        DN.set_title('Negative Enrichment')
+        sns.despine()
+    
+    plt.tight_layout(h_pad=2,w_pad=1)
+    plt.subplots_adjust(top=0.88)
+    file='{}{}_GSEA_NES_plot.png'.format(out_dir,gmt_name)
+    fig.savefig(file, dpi=300)
+    plt.close()
+
+    return file
+
 def GSEA(exp):
     '''
     Perform Gene Set Enrichment Analysis using gsea 3.0 from the Broad Institute.
@@ -2043,8 +2088,21 @@ def GSEA(exp):
         for name,gset in gmts.items():
             path=glob.glob('{}/{}/{}/*'.format(out_dir,comparison,name))[0]
             if 'index.html' == '{}/index.html'.format(path).split('/')[-1]:
-                os.chdir('{}/{}/{}'.format(out_dir,comparison,name))
-                open('Within each folder click "index.html" for results','w')
+                new_dir='{}/{}/{}'.format(out_dir,comparison,name)
+                os.chdir(new_dir)
+                
+                pos_file = glob.glob('{}/gsea_report_for_na_pos*.xls'.format(path))[0]
+                neg_file = glob.glob('{}/gsea_report_for_na_neg*.xls'.format(path))[0]
+
+                barplot = gsea_barplot(out_dir = new_dir, pos_file=pos_file, neg_file=neg_file, gmt_name=name)
+
+                msg = 'Open "index.html" in subfolder for all results.\nOpen {} for barplot summary of top enrichments.'.format(barplot)
+
+                with open('README.txt','w') as fp:
+                    fp.write(msg)
+
+                print('{} GSEA enrichment barplot for {} can be found here:\n {}'.format(comparison,name,barplot), open(exp.log_file,'a'))
+
             else:
                 print('GSEA did not complete {} for {}.'.format(name,comparison), file=open(exp.log_file,'a'))            
 
