@@ -695,7 +695,7 @@ def spike(exp, backend='Agg'):
         # Filtering for counts with more than 5 counts in two samples
         spike_counts = exp.spike_counts.copy()
         spike_counts = spike_counts[spike_counts[spike_counts > 5].apply(lambda x: len(x.dropna()) > 1 , axis=1)]
-        mix = read_pd(exp.genome_indicies['ERCC_Mix'])
+        mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
         mix = mix.rename(columns={'concentration in Mix 1 (attomoles/ul)': 'Mix_1',
                                   'concentration in Mix 2 (attomoles/ul)': 'Mix_2'})
         names = list(spike_counts.columns)
@@ -711,8 +711,8 @@ def spike(exp, backend='Agg'):
             name=name + [sample]*length
         merged_spike['Sample']=name
         merged_spike['log'] = merged_spike.value.apply(lambda x: np.log2(x))
-        merged_spike['log2_Mix_1']=np.log2(merged_spike.Mix_1)
-        merged_spike['log2_Mix_2']=np.log2(merged_spike.Mix_2)
+        merged_spike['log2_Mix_1']= np.log2(merged_spike.Mix_1)
+        merged_spike['log2_Mix_2']= np.log2(merged_spike.Mix_2)
 
         # Plot ERCC spike.
         sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
