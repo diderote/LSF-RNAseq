@@ -675,9 +675,10 @@ def spike(exp, backend='Agg'):
             print('At least one ERCC alignment failed.', file=open(exp.log_file,'a'))
             raise RaiseError('At least one ERCC alignment failed. Check scripts and resubmit.')
         else:
-            exp.spike_counts = pd.DataFrame(index=ERCC_counts[1].index)
+            exp.spike_counts = pd.DataFrame(index=pd.read_csv(ERCC_counts[1], header=None, index_col=0, sep="\t").index)
+        
             for number,sample in exp.samples.items():
-                exp.spike_counts[sample] = read_pd('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample))[[3]]
+                exp.spike_counts[sample] = pd.read_csv('{loc}{sample}_ERCCReadsPerGene.out.tab'.format(loc=ERCC_folder, sample=sample),header=None, index_col=0, sep="\t")[[3]]
             exp.spike_counts = exp.spike_counts.iloc[4:,:]
             exp.spike_counts.to_csv('{loc}ERCC.count.matrix.txt'.format(loc=ERCC_folder), header=True, index=True, sep="\t")
 
@@ -755,13 +756,13 @@ def bam2bw(in_bam,out_bw,job_log_folder,sample,project,stranded,log_file):
     if stranded:
         command_list = ['module rm python share-rpms65',
                         'source activate RNAseq',
-                        'bamCoverage --filterRNAstrand forward -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.fwd.bw',
-                        'bamCoverage --filterRNAstrand reverse --scaleFactor -1 -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.rev.bw'
+                        'bamCoverage --filterRNAstrand forward -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.fwd.bw'.format(in_bam,out_bw),
+                        'bamCoverage --filterRNAstrand reverse --scaleFactor -1 -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.rev.bw'.format(in_bam,out_bw)
                         ]
     else:
         command_list = ['module rm python share-rpms65',
                         'source activate RNAseq',
-                        'bamCoverage -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.bw'
+                        'bamCoverage -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.bw'.format(in_bam,out_bw)
                         ]
     send_job(command_list=command_list,
              job_name= '{}_stranded_bw'.format(sample),

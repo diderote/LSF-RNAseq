@@ -118,6 +118,7 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.enrichr(gene_list=[], description='', out_dir='')
 - RNAseq.plot_PCA(counts=pd.Dataframe(), colData=pd.Dataframe(), out_dir='', name='')
 - RNAseq.volcano(results=pd.Dataframe(DESeq2_results), sig_up=[], sig_down=[], name='', out_dir='')
+- RNAseq.gseq_barplot(out_dir,pos_file,neg_file,gmt_name,max_number)
 - RNAseq.RUV(data=pd.DataFrame(counts),design='~',colData=pd.DataFrame(),type='ercc'or'empirical',log=exp.log_file, ERCC_counts=pd.DataFrame(), comparison='', plot_dir='')
 - RNAseq.plot_exp(data=pd.DataFrame(), plot_dir='', exp_type='', name='')
 - RNAseq.rout_write()
