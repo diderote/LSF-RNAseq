@@ -49,6 +49,7 @@ Genome: hg38 #hg38, hg19 or mm10
 Fastq_directory: /path/to/fastq/directory/
 Sequencing_type: paired #'paired' or 'single'
 Stranded: yes # or no if library prep was stranded
+Sequencer: Nextseq # or HiSeq
 #### Differential Expression Options ####
 Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
 Conditions: #Add as many as needed
