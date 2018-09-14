@@ -873,8 +873,10 @@ def rsem(exp):
     print('\n Beginning RSEM-STAR transcriptome alignments: {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), file=open(exp.log_file, 'a'))
     
     out_dir = '{}RSEM_results/'.format(exp.scratch)
-    
     os.makedirs(out_dir, exist_ok=True)       
+
+    cur_dir=val_folder(os.getcwd())
+    os.chdir(out_dir)
 
     scan=0
     while scan < 2: #Loop twice to make sure source activate didn't fail the first time
@@ -976,6 +978,8 @@ def rsem(exp):
     exp.count_matrix = counts
     exp.tasks_complete.append('STAR')
     print('STAR alignemnt and RSEM counts complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), file=open(exp.log_file, 'a'))
+    
+    os.chdir(cur_dir)
     
     return exp
     
