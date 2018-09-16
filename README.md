@@ -80,15 +80,24 @@ All submission scripts, error and output files are saved.
 5. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq_experiment_file.yml' into your run folder.
 6. Rename your experiment file as needed and edit the file to fit your experiment using a text editor (ie. textEdit).
 
-### There are two methods for running this pipeline - from file or through a jupyter notebook.  From File:
+### There are two methods for running this pipeline - from file or through a jupyter notebook.  
+
+#### From File:
 
 7. Copy 'RNAseq.py' into your run folder.
-8. From your run folder, run analysis with this command (replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
+8. From your run folder, run analysis with this command replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
 	
 > bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
 
 9. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.
 
+#### As Jupyter Notebook:
+
+7. From your run folder, run analysis with the following command.  Replace anything in <...> as needed, including the locations of the file:
+
+> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;papermill </path/to/RNAseq.ipynb> </desired/path/to/output/RNAseq.ipynb> -p yaml_file <RNAseq_experimental_file.yml>' 
+
+8. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.  Output can be openend with nteract and saved to pdf or in any juptyer lab or jupyter notebook session.
 
 ### RNAseq.py can be imported to python as a module with the following attributes:
 	

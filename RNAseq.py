@@ -111,7 +111,7 @@ def image_display(file):
 
 def out_result(image,text):
     if not run_main:
-        if os.path.isfile(file):
+        if os.path.isfile(image):
             display(HTML('<h2>{}</h2>'.format(text)))
             image_display(image)
         else:
@@ -408,7 +408,7 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     write_job.write(cmd)
     write_job.close()
     os.system('bsub < {}'.format(job_path_name))
-    output('sending job ID_{}...'.format(rand_id=str(rand_id)), log_file)
+    output('sending job ID_{}...'.format(str(rand_id)), log_file)
     time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
     
     return rand_id
@@ -2390,33 +2390,31 @@ def finish(exp):
         raise RuntimeError('Error finishing pipeline. Fix problem then resubmit with same command to continue from last completed step.')
 
 def validated_run(task,func,exp):
-    global pipe_stage
     pipe_stage = task
-    return exp if task in exp.tasks_complete else func(exp)
+    try:
+        return exp if task in exp.tasks_complete else func(exp)
+    except:
+        output('Error in {}.'.format(pipe_stage), exp.log_file)
+        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
+        with open(filename, 'wb') as experiment:
+            pickle.dump(exp, experiment)
+        raise RuntimeError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
 
 def pipeline(experimental_file):
-    try:
-        global pipe_stage
         pipe_stage = 'parsing_file'
         exp=parse_yaml(experimental_file)
-
-        pipe_stage='preprocessing'
         exp=validated_run('Stage',stage,exp)
         exp=validated_run('Fastq_screen',fastq_screen,exp)
         exp=validated_run('Trim',trim,exp)
         exp=validated_run('FastQC',fastqc,exp)
-        
-        pipe_stage='alignment'
         exp=validated_run('Spike',spike,exp)
-        if 'STAR' not in exp.tasks_complete:
-            pipe_stage = 'STAR'
-            if exp.alignment_mode == 'gene':
-                exp = star(exp)
-            else:
-                exp=rsem(exp)
+        
+        if exp.alignment_mode == 'gene':
+            exp = validated_run('STAR',star,exp)
+        else:
+            exp = validated_run('STAR',rsem,exp)
+        
         exp=validated_run('Kallisto',kallisto,exp)
-
-        pipe_stage='differential expression'
         exp=validated_run('GC',GC_normalization,exp)
         exp=validated_run('DESeq2',DESeq2,exp)
         exp=validated_run('Sleuth',Sleuth,exp)
@@ -2429,13 +2427,6 @@ def pipeline(experimental_file):
         #exp = validated_run('decomp',decomposition,exp)  
         exp=validated_run('MultiQC',final_qc,exp)
         exp=validated_run('Finished',finish,exp)
-        
-    except:
-        output('Error in {}.'.format(pipe_stage), exp.log_file)
-        filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
-        with open(filename, 'wb') as experiment:
-            pickle.dump(exp, experiment)
-        raise RuntimeError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
 
 if run_main:
     import argparse
