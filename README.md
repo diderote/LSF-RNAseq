@@ -25,6 +25,7 @@ Option Details:
 * Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
 * ERCC_spike: align reads to spike index using STAR.
 * Stranded: (yes/no) Will generate two stranded signal bigwig files if stranded.  Otherwise, will generate one per sample.
+* Sequencer: Nextseq or Hiseq
 * Normalization: 
 	* Median-Ratios = default DESeq2 method normalization: median of ratios of observed counts. Also reports apeglm lfc shrunken values.
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
@@ -78,36 +79,41 @@ All submission scripts, error and output files are saved.
 	- ERCC mix file provided in options_files folder.  If using a different control set, mimic this format for use.
 5. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq_experiment_file.yml' into your run folder.
 6. Rename your experiment file as needed and edit the file to fit your experiment using a text editor (ie. textEdit).
-7. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq' into your run folder.
+
+### There are two methods for running this pipeline - from file or through a jupyter notebook.  From File:
+
+7. Copy 'RNAseq.py' into your run folder.
 8. From your run folder, run analysis with this command (replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
 	
 > bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
 
 9. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.
 
+
 ### RNAseq.py can be imported to python as a module with the following attributes:
 	
 Experiment object can be passed to the following functions and returned: exp = function(exp):
-- RNAseq.DESeq2()
-- RNAseq.fastq_cat()       
-- RNAseq.fastq_screen()
-- RNAseq.GO_enrich()
-- RNAseq.fastqc()
-- RNAseq.GSEA()
-- RNAseq.final_qc()
-- RNAseq.principal_component_analysis()
-- RNAseq.star()
-- RNAseq.rsem()
-- RNAseq.Sleuth()
-- RNAseq.kallisto()
-- RNAseq.sigs()
-- RNAseq.clustermap()
-- RNAseq.spike()
-- RNAseq.splicing()
-- RNAseq.overlaps()
-- RNAseq.stage()    
-- RNAseq.trim()
-- RNAseq.GC_normalization()
+- RNAseq.DESeq2(exp)
+- RNAseq.fastq_cat(exp)       
+- RNAseq.fastq_screen(exp)
+- RNAseq.GO_enrich(exp)
+- RNAseq.fastqc(exp)
+- RNAseq.GSEA(exp)
+- RNAseq.final_qc(exp)
+- RNAseq.principal_component_analysis(exp)
+- RNAseq.star(exp)
+- RNAseq.rsem(exp)
+- RNAseq.Sleuth(exp)
+- RNAseq.kallisto(exp)
+- RNAseq.sigs(exp)
+- RNAseq.clustermap(exp)
+- RNAseq.spike(exp)
+- RNAseq.overlaps(exp)
+- RNAseq.stage(exp)    
+- RNAseq.trim(exp)
+- RNAseq.GC_normalization(exp)
+
+- RNAseq.pipeline(experimental_file)
 
 #### Helper functions:
 - RNAseq.parse_yaml(experimental_file) takes required yaml file and parses an new experimental object or loads an incomplete one from scratch     
@@ -122,3 +128,10 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.RUV(data=pd.DataFrame(counts),design='~',colData=pd.DataFrame(),type='ercc'or'empirical',log=exp.log_file, ERCC_counts=pd.DataFrame(), comparison='', plot_dir='')
 - RNAseq.plot_exp(data=pd.DataFrame(), plot_dir='', exp_type='', name='')
 - RNAseq.rout_write()
+- RNAseq.html_header()
+- RNAseq.val_folder(folder)
+- RNAseq.read_pd(file)
+- RNAseq.output(text,log_file)
+- RNAseq.image_display(file)
+- RNAseq.out_result(image,text)
+- RNAseq.validated_run()

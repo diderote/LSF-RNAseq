@@ -68,12 +68,12 @@ Designs: #Add as many as needed.  All condtions are binary for now.
     Test_condition: A
     All_conditions: A,B 
     All_samples: 1,2,3,4,5,6 
-  Test_4: # equivalent to ~Condition_A + Condition_B + Condition_C with reduced ~Condition_A + Condition_B
+  Test_3: # equivalent to ~Condition_A + Condition_B + Condition_C with reduced ~Condition_A + Condition_B
     Test_type: LRT
     Test_condition: C
     All_conditions: A,B,C
     All_samples: 1,2,3,4,5,6
-  Test_3: # equivalent to ~Condition_C + Condition_B + Condition_A + Condition_A:Condition_B
+  Test_4: # equivalent to ~Condition_C + Condition_B + Condition_A + Condition_A:Condition_B
     Test_type: Wald
     Test_condition: A,B # Interaction
     All_conditions: A,B,C
