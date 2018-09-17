@@ -2042,7 +2042,7 @@ def GO_enrich(exp):
                 enrichr(gene_list=list(sig), description='{}_{}'.format(comparison,name),out_dir=GO_out)
 
     exp.tasks_complete.append('GO_enrich')
-    outpout('GO Enrichment analysis for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
+    output('GO Enrichment analysis for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
     
     return exp
 
