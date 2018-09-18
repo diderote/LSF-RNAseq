@@ -37,6 +37,7 @@ dependencies:
 - matplotlib-venn=0.11.5=
 - pandas=0.21.1
 - papermill=0.14.2
+- pypdf2
 - python=3.6.3
 - pyyaml=3.12
 - r-ashr=2.0.5

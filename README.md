@@ -1,4 +1,4 @@
-# Nimerlab RNAseq pipeline
+# LSF RNAseq pipeline
 
 This pipline handles processing and analyses for RNAseq data on the University of Miami's Pegasus Computer Cluster using and LSF resource manager.  (Can be readily adpated to other resource managers: SGE, SLURM)  When fully implemented from start to finish it performs the following tasks:
 
@@ -97,7 +97,7 @@ All submission scripts, error and output files are saved.
 
 > bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;papermill </path/to/RNAseq.ipynb> </desired/path/to/output/RNAseq.ipynb> -p yaml_file <RNAseq_experimental_file.yml>' 
 
-8. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.  Output can be openend with nteract and saved to pdf or in any juptyer lab or jupyter notebook session.
+8. In case of error, change the output RNAseq.ipynb name and use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.  Output can be openend with nteract and saved to pdf or in any juptyer lab or jupyter notebook session.
 
 ### RNAseq.py can be imported to python as a module with the following attributes:
 	

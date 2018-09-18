@@ -13,6 +13,9 @@ To do:
     - t-SNE (add as option)
     - add sleuth for mouse and make compatable with new v.7 strategy 
     - optimize STAR
+    - add summary statistics at finish
+        -fragment lenght
+        -mapping ..etc
 
 '''
 __author__ = 'Daniel L. Karl'
@@ -47,6 +50,7 @@ import rpy2.rinterface as ri
 from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri, r, globalenv, Formula
 import gseapy
+import PyPDF2
 
 class Experiment:
     '''
@@ -78,7 +82,7 @@ def html_header():
     return ''.join(['<h1>RNAseq Analysis Notebook</h1>',
                     '<body><b>Experiment Date: {:%Y-%m-%d}<br>'.format(datetime.now()),
                     'Pipeline version: {}</b><br>'.format(__version__),
-                    '<a href="http://www.github.com/diderote/Nimerlab-RNAseq">Pipeline Code</a><br>',
+                    '<a href="http://www.github.com/diderote/LSF-RNAseq">Pipeline Code</a><br>',
                     'License: MIT <br> Author: {}'.format(__author__)
                     ])
 
@@ -182,23 +186,9 @@ def parse_yaml(experimental_file):
         raise ValueError("Genome must be either hg38, hg19, or mm10.")
     output('Processing data with: {}'.format(str(exp.genome)), exp.log_file)
 
-    #Sequencing type
-    if yml['Sequencing_type'].lower() not in ['paired','single']:
-        raise ValueError("Must specify whether sequence is paired or single end.")
-    exp.seq_type = yml['Sequencing_type'].lower()
-    exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth'] if exp.seq_type == 'single' else exp.tasks_complete
-
-    #Standed
-    exp.stranded = True if yml['Stranded'] else False
-    output('Processing data as {}-end {} sequencing.'.format(exp.seq_type, ('stranded' if exp.stranded else 'non-stranded')), exp.log_file)
-
-    #Sequencer for trimming options
-    exp.sequencer = yml['Sequencer'].lower() if yml['Sequencer'].lower() in ['nextseq','hiseq'] else None
-    output('Sequencer: {}'.format(exp.sequencer.capitalize()), exp.log_file)
-
     #Tasks to complete
     if yml['Tasks']['Align'] == False:
-        exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','Kallisto', 'Sleuth']
+        exp.tasks_complete = exp.tasks_complete + ['Stage','FastQC','Fastq_screen','Trim','STAR','RSEM','Kallisto', 'Sleuth']
         output('Not performing alignment.',exp.log_file)
         count_matrix_loc=yml['Count_matrix']
         if os.path.exists(count_matrix_loc):
@@ -210,6 +200,24 @@ def parse_yaml(experimental_file):
     elif yml['Tasks']['Align'] == True:
         #Alignment mode. Default is transcript.
         exp.alignment_mode = 'gene' if yml['Tasks']['Alignment_Mode'].lower() == 'gene' else 'transcript'
+        if exp.alignment_mode == 'gene':
+            exp.tasks_complete.append('RSEM')
+        elif exp.alignment_mode == 'transcript':
+            exp.tasks_complete.append('STAR')
+
+        #Sequencing type
+        if yml['Sequencing_type'].lower() not in ['paired','single']:
+            raise ValueError("Must specify whether sequence is paired or single end.")
+        exp.seq_type = yml['Sequencing_type'].lower()
+        exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth'] if exp.seq_type == 'single' else exp.tasks_complete
+
+        #Standed
+        exp.stranded = True if yml['Stranded'] else False
+        output('Processing data as {}-end {} sequencing.'.format(exp.seq_type, ('stranded' if exp.stranded else 'non-stranded')), exp.log_file)
+
+        #Sequencer for trimming options
+        exp.sequencer = yml['Sequencer'].lower() if yml['Sequencer'].lower() in ['nextseq','hiseq'] else None
+        output('Sequencer: {}'.format(exp.sequencer.capitalize()), exp.log_file)
     else:
         raise IOError('Please specify whether or not to perform alignment.')   
     
@@ -301,21 +309,21 @@ def parse_yaml(experimental_file):
             all_samples = [exp.samples[int(sample)] for sample in test['All_samples'].split(',')]
             exp.designs[key] = {'all_samples': all_samples}
             for condition in all_conditions:
-                exp.designs[key]['Condition_{}'.format(condition)] = [exp.samples[int(sample)] for group in condition for sample in exp.conditions[group]]
+                exp.designs[key][condition] = [exp.samples[int(sample)] for sample in exp.conditions[condition]]
             exp.designs[key]['Test_condition'] = test['Test_condition'].split(',') 
 
             if len(exp.designs[key]['Test_condition']) == 1:
-                exp.designs[key]['reduced'] = '~' + ' + '.join(['Condition_{}'.format(condition) for condition in all_conditions if condition not in exp.designs[key]['Test_condition']])
-                exp.designs[key]['design'] = '{} + Condition_{}'.format(exp.designs[key]['reduced'],exp.designs[key]['Test_condition'][0]) if len(all_conditions) > 1 else '~Condition_{}'.format(exp.designs[key]['Test_condition'][0])  
+                exp.designs[key]['reduced'] = '~' + ' + {}'.join([condition for condition in all_conditions if condition not in exp.designs[key]['Test_condition']])
+                exp.designs[key]['design'] = '{} + {}'.format(exp.designs[key]['reduced'],exp.designs[key]['Test_condition'][0]) if len(all_conditions) > 1 else '~{}'.format(exp.designs[key]['Test_condition'][0])  
             elif len(exp.designs[key]['Test_condition']) == 2:
-                exp.designs[key]['reduced'] = '~' + ' + '.join(['Condition_{}'.format(condition) for condition in all_conditions])
-                intersection='Condition_{}:Condition_{}'.format(exp.designs[key]['Test_condition'][0],exp.designs[key]['Test_condition'][1])
+                exp.designs[key]['reduced'] = '~' + ' + '.join(['{}'.format(condition) for condition in all_conditions])
+                intersection='{}:{}'.format(exp.designs[key]['Test_condition'][0],exp.designs[key]['Test_condition'][1])
                 exp.designs[key]['design'] = '{} + {}'.format(exp.designs[key]['reduced'],intersection) if len(all_conditions) > 2 else '~{}'.format(intersection)
             else:
                 raise ValueError('Cannot handle this experimental design.')
             exp.designs[key]['reduced'] = '~1' if exp.designs[key]['reduced'] == '~' else exp.designs[key]['reduced']
 
-            exp.designs[key]['colData'] = pd.DataFrame({'Condition_{}'.format(condition): ['condition' if sample in exp.designs[key]['Condition_{}'.format(condition)] else 'not_condition' for sample in all_samples] for condition in all_conditions},
+            exp.designs[key]['colData'] = pd.DataFrame({'{}'.format(condition): ['condition' if sample in exp.designs[key]['{}'.format(condition)] else 'not_condition' for sample in all_samples] for condition in all_conditions},
                                                         index=all_samples) 
             exp.designs[key]['Test_type'] = exp.de_tests[key]['Test_type'].lower()
         
@@ -350,7 +358,7 @@ def parse_yaml(experimental_file):
     #DE Overlaps
     for key, item in yml['Overlaps'].items():
         if bool(item):   
-            exp.overlaps[key] = item.split('v')
+            exp.overlaps[key] = item.split(':')
     if str(len(list(exp.overlaps.keys()))) != 0:
         output('\nOverlapping {} differential analysis comparison(s).'.format(str(len(list(exp.overlaps.keys())))), exp.log_file)
         output('{}\n'.format(str(exp.overlaps)), exp.log_file)
@@ -1005,7 +1013,7 @@ def rsem(exp):
     counts.to_csv('{}RSEM.count.matrix.txt'.format(out_dir), header=True, index=True, sep="\t")
 
     exp.count_matrix = counts
-    exp.tasks_complete.append('STAR')
+    exp.tasks_complete.append('RSEM')
     output('STAR alignemnt and RSEM counts complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
     
     os.chdir(cur_dir)
@@ -1375,16 +1383,10 @@ def DESeq2(exp):
     os.makedirs(out_dir, exist_ok=True)
     
     if exp.gc_norm:
-        if exp.alignment_mode == 'gene':
-            output('Using GC normalized counts for differential expression.\n', exp.log_file)
-        else:
-            output('Using GC normalized RSEM expected counts for differential expression.\n', exp.log_file)
+        output('Using GC normalized counts for differential expression.\n', exp.log_file)
         count_matrix = exp.gc_count_matrix
     else:
-        if exp.alignment_mode == 'gene':
-            output('Using STAR counts for differential expression.\n', exp.log_file)
-        else:
-            output('Using rounded RSEM expected counts for differential expression.\n', exp.log_file)
+        output('Using STAR or STAR-RSEM aligned counts for differential expression.\n', exp.log_file)
         count_matrix = round(exp.count_matrix)
     
     dds={}
@@ -1465,7 +1467,7 @@ def DESeq2(exp):
                                                                           test_type=designs['Test_type'],
                                                                           design=designs['design'],
                                                                           reduced=designs['reduced'],
-                                                                          test_condition='Condition_{}'.format(designs['Test_condition'][-1]),
+                                                                          test_condition='{}'.format(designs['Test_condition'][-1]),
                                                                           colData=colData, 
                                                                           norm_type='ERCC', 
                                                                           ERCC_counts = exp.spike_counts[designs['all_samples']], 
@@ -1483,7 +1485,7 @@ def DESeq2(exp):
                                                                           test_type=designs['Test_type'],
                                                                           design=designs['design'],
                                                                           reduced=designs['reduced'],
-                                                                          test_condition='Condition_{}'.format(designs['Test_condition'][-1]),
+                                                                          test_condition='{}'.format(designs['Test_condition'][-1]),
                                                                           colData=colData, 
                                                                           norm_type='ERCC', 
                                                                           ERCC_counts = full_counts.loc[subgroupB], 
@@ -1498,7 +1500,7 @@ def DESeq2(exp):
                                                                           test_type=designs['Test_type'],
                                                                           design=designs['design'], 
                                                                           reduced=designs['reduced'],
-                                                                          test_condition='Condition_{}'.format(designs['Test_condition'][-1]),
+                                                                          test_condition='{}'.format(designs['Test_condition'][-1]),
                                                                           colData=colData, 
                                                                           norm_type='empirical', 
                                                                           ERCC_counts = None, 
@@ -1698,7 +1700,7 @@ def Principal_Component_Analysis(exp):
         plot_PCA(counts=exp.de_results['{}_rlog_counts'.format(comparison)],
                  colData= design['colData'],
                  out_dir='{}{}/'.format(out_dir,comparison),
-                 test_condition='Condition_{}'.format(design['Test_condition'][-1]),
+                 test_condition='{}'.format(design['Test_condition'][-1]),
                  name=comparison
                 )
         plot_exp(data=exp.de_results['{}_rlog_counts'.format(comparison)],
@@ -2309,6 +2311,89 @@ def overlaps(exp):
                    
     return exp
 
+
+def plot_col(df, title, ylabel, out='', xy=(None,None), xticks=[''], plot_type=['violin','swarm'], pvalue=False, compare_tags=None,backend='Agg', log_file=None):
+    '''
+    One or two column boxplot from dataframe.  Titles x axis based on column names.
+    
+    Inputs
+    ------
+    df: dataframe (uses first two columns)
+    title: string of title
+    ylabel: string of y label
+    xy: If specified, will x is the label column and y is the data column. (default: (None,None): Data separated into two columns).
+    xticks: list of xtick names (default is none)
+    pvalue: bool to perform ttest (default is False).  Will only work if xy=(None,None) or ther are only two labels in x. 
+    plot_type: list of one or more: violin, box, swarm (default=violin)
+    compare_tags:  if xy and pvalue is specified and there are more than two tags in x, specify the tags to compare. eg. ['a','b']
+    out: out parent directory.  if none returns into colplot/
+    log_file: log_file
+    backend: 'Agg' if pipeline else 'Qt5Agg'
+
+    Returns
+    ------
+    None
+    
+    
+    '''
+    out = '{}/colplot/'.format(val_folder(out)) if len(out) != 0 else 'colplot/'
+    os.makedirs(out, exist_ok=True)
+
+    plt.switch_backend(backend)
+    plt.clf()
+    sns.set(context='paper', font='Arial', font_scale=2, style='white', rc={'figure.dpi': 300, 'figure.figsize':(5,6)})
+    
+    if type(plot_type) != list:
+        plot_type = plot_type.split()
+    lower_plot_type = [x.lower() for x in plot_type]
+
+    if len(lower_plot_type) == 0:
+        raise IOError('Input a plot type.')
+    elif True not in {x in lower_plot_type for x in ['violin', 'box', 'swarm']}:
+        raise IOError('Did not recognize plot type.')
+
+    if 'swarm' in lower_plot_type:
+        if xy == (None,None):
+            fig = sns.swarmplot(data=df, color='black', s=4)
+        else:
+            fig = sns.swarmplot(data=df, x=xy[0], y=xy[1], color='black', s=4)
+    if 'violin' in lower_plot_type:
+        if xy == (None,None):
+            fig = sns.violinplot(data=df)
+        else:
+            fig = sns.violinplot(data=df, x=xy[0], y=xy[1])
+    if 'box' in lower_plot_type:
+        if xy == (None,None):
+            fig = sns.boxplot(data=df)
+        else:
+            fig = sns.boxplot(data=df, x=xy[0], y=xy[1])
+
+    fig.yaxis.set_label_text(ylabel)
+    fig.set_title(title)
+    if xticks:
+        fig.xaxis.set_ticklabels(xticks)
+        fig.xaxis.set_label_text('')
+        for tick in fig.xaxis.get_ticklabels():
+            tick.set_fontsize(12)
+
+    if pvalue:
+        if xy==(None,None):
+            _,pvalue = stats.ttest_ind(a=df.iloc[:,0], b=df.iloc[:,1])
+            compare_tags = df.columns
+        else:
+            _,pvalue = stats.ttest_ind(a=df[df[xy[0]] == compare_tags[0]][xy[1]], b=df[df[xy[0]] == compare_tags[1]][xy[1]])
+        fig.text(s='p-value = {:.03g}, {} v {}'.format(pvalue,compare_tags[0],compare_tags[1]), x=0, y=-.12, transform=fig.axes.transAxes, fontsize=12)
+        
+    sns.despine()
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.17, top=0.9)
+    plt.savefig('{}{}.png'.format(out,title.replace(' ','_')), dpi=300)
+    if run_main:
+        plt.close()
+
+    out_result('{}{}.png'.format(out,title.replace(' ','_')), '{} Plot'.format(title))
+    output('{}.png found in {}'.format(title.replace(' ','_'), out),log_file)
+
 def final_qc(exp):
     try:
         output('Beginning final qc: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
@@ -2331,11 +2416,63 @@ def final_qc(exp):
         
         #Wait for jobs to finish
         job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
-        display(html('<h1>Final QC Summary</h1>'))
-        display(html('{}/multiqc_report.html'.format(exp.scratch)))
-        
+
         if os.path.isdir('{}multiqc_data'.format(exp.scratch)):
+            copytree('{}multiqc_data'.format(exp.scratch), '{}/QC/multiqc_data'.format(exp.scratch))
             rmtree('{}multiqc_data'.format(exp.scratch))
+
+        log_file = None if run_main else exp.log_file
+        samples = [sample for sample in exp.samples.values()]
+        
+        #Summary plots for RSEM alignment
+        rsem_file = '{}/QC/multiqc_data/multiqc_rsem.txt'.format(exp.scratch)
+        if os.path.isfile(rsem_file):
+            rsem_stats = read_pd(rsem_file)
+            plot_col(df=rsem_stats.Alignable / 1e6,
+                     title='Aligned Reads per Sample',
+                     ylabel='Reads (Millions)',
+                     log_file=log_file
+                     )
+            plot_col(df=rsem_stats.alignable_percent,
+                     title='Percent Aligned per Sample',
+                     ylabel='Percentage Aligned',
+                     log_file=log_file
+                     )
+
+            #fragment_series = pd.Series()
+            #for sample in samples:    
+            #    modelfile = '{}/QC/{}.models.pdf'.format(exp.scratch,sample)
+            #    if os.path.isfile(modelfile):
+            #        with open(modelfile, 'rb') as fp:
+            #            text = PyPDF2.PdfFileReader(fp).getPage(0).extractText()
+            #            mean = float(text.split('\n')[1].split[','][1].split(' ')[-1])
+            #    fragment_series[sample] = mean
+            #plot_col(df=fragment_series,
+            #         title='Mean Fragment Lengths per Sample',
+            #         ylable='Fragment Length',
+            #         log_file=log_file
+            #        )
+
+        #Summary plots for FastQC data
+        fastqc_file = '{}/QC/multiqc_data/multiqc_fastqc.txt'.format(exp.scratch)
+        if os.path.isfile(fastqc_file):
+            gen_stats = read_pd('multiqc_general_stats.txt')
+            if exp.seq_type == 'paired':
+                samples = ['{}_R2'.format(sample) for sample in samples]
+            plot_col(df=gen_stats.loc[samples,'FastQC_mqc-generalstats-fastqc-total_sequences']/1e6,
+                     title= 'Total Sequencer Reads per Sample',
+                     ylabel = 'Reads (Millions)',
+                     log_file = log_file 
+                    )
+
+            plot_col(df=gen_stats.loc[samples,'FastQC_mqc-generalstats-fastqc-percent_gc'],
+                     title = 'Percent GC Content per Sample',
+                     ylabel = 'Percentage of Reads with GC Content',
+                     log_file = log_file
+                    )
+
+        display(HTML('<h1>Final QC Summary</h1>'))
+        display(HTML('{}/multiqc_report.html'.format(exp.scratch)))
 
         exp.tasks_complete.append('MultiQC')
         
@@ -2366,7 +2503,9 @@ def finish(exp):
         output('Copying all results into {}: {:%Y-%m-%d %H:%M:%S}\n'.format(exp.out_dir, datetime.now()), exp.log_file)
         
         scratch_log= '{}{}'.format(exp.scratch,exp.log_file.split("/")[-1])
-        copy2(exp.log_file, scratch_log)
+        if run_main:
+            copy2(exp.log_file, scratch_log)
+            
         rmtree(exp.out_dir)
         copytree(exp.scratch, exp.out_dir)
 
@@ -2392,7 +2531,11 @@ def finish(exp):
 def validated_run(task,func,exp):
     pipe_stage = task
     try:
-        return exp if task in exp.tasks_complete else func(exp)
+        if task in exp.tasks_complete:
+            output('Skipping... ', exp.log_file)
+            return exp
+        else:
+            return func(exp)
     except:
         output('Error in {}.'.format(pipe_stage), exp.log_file)
         filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
@@ -2408,12 +2551,8 @@ def pipeline(experimental_file):
         exp=validated_run('Trim',trim,exp)
         exp=validated_run('FastQC',fastqc,exp)
         exp=validated_run('Spike',spike,exp)
-        
-        if exp.alignment_mode == 'gene':
-            exp = validated_run('STAR',star,exp)
-        else:
-            exp = validated_run('STAR',rsem,exp)
-        
+        exp=validated_run('STAR',star,exp)
+        exp=validated_run('RSEM',rsem,exp)
         exp=validated_run('Kallisto',kallisto,exp)
         exp=validated_run('GC',GC_normalization,exp)
         exp=validated_run('DESeq2',DESeq2,exp)
@@ -2424,7 +2563,7 @@ def pipeline(experimental_file):
         exp=validated_run('GO_enrich',GO_enrich,exp)
         exp=validated_run('GSEA',GSEA,exp)
         exp=validated_run('Overlaps',overlaps,exp)
-        #exp = validated_run('decomp',decomposition,exp)  
+        #exp=validated_run('decomp',decomposition,exp)  
         exp=validated_run('MultiQC',final_qc,exp)
         exp=validated_run('Finished',finish,exp)
 

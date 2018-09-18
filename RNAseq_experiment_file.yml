@@ -13,37 +13,14 @@ Tasks: #Default is 'All'
 #### Experimental Setup ####
 Samples:   
   1: 'Name' # Add more if needed
-  2: 'Name' #
-  3: 'Name' #
-  4: 'Name' #
-  5: 'Name' #
-  6: 'Name' #
-  7: 'Name' #
-  8: 'Name' #
-  9: 'Name' #
-  10: 'Name' #
-  11: 'Name' #
-  12: 'Name' #
-  13: 'Name' #
-  14: 'Name' #
-  15: 'Name' #
-  16: 'Name' #
-  17: 'Name' #
-  18: 'Name' #
-  19: 'Name' #
-  20: 'Name' #
-  21: 'Name' #
-  22: 'Name' #
-  23: 'Name' #
-  24: 'Name' #
-  25: 'Name' #
-  26: 'Name' #
-  27: 'Name' #
-  28: 'Name' #
-  29: 'Name' #
-  30: 'Name' #
-  31: 'Name' #
-  32: 'Name' #
+  2: 'Name'
+  3: 'Name'
+  4: 'Name'
+  5: 'Name'
+  6: 'Name'
+  7: 'Name'
+  8: 'Name'
+  9: 'Name'
 #### Alignment Options ####
 Genome: hg38 #hg38, hg19 or mm10
 Fastq_directory: /path/to/fastq/directory/
@@ -52,13 +29,13 @@ Stranded: yes # or no if library prep was stranded
 Sequencer: Nextseq # or HiSeq
 #### Differential Expression Options ####
 Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
-Conditions: #Add as many as needed
+Conditions: #Add as many as needed. Name as desired.
   A: 1,2,3 
   B: 4,5,6
   C: 7,8,9
   D: 10,11,12
 Designs: #Add as many as needed.  All condtions are binary for now.
-  Test_1: # equivalent to ~Condition_A (ex. treated v non_treated in condition A)
+  Test_1: # equivalent to ~Condition_A (ex. treated v non_treated in condition A).  Name as desired
     Test_type: Wald # or LRT
     Test_condition: D #main condition of intereset for de_test
     All_conditions: D #All conditions of interest used for this test (batch plus main)
@@ -79,7 +56,7 @@ Designs: #Add as many as needed.  All condtions are binary for now.
     All_conditions: A,B,C
     All_samples: 1,2,3,4,5,6
 Overlaps:
-  Overlap_1: Test_1vTest_2 #Overlap of Differential Genes.  Leave Blank if none needed.
+  Overlap_1: Test_1:Test_2 #Overlap of Differential Genes.  Leave Blank if none needed.
 #### Optional Preprocessed Data Inputs ####
 Count_matrix: /path/to/count/matrix.txt #or xls.
 Spike_matrix: /path/to/spike/count/matrix.txt
