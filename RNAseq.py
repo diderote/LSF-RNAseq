@@ -38,12 +38,14 @@ import yaml
 import reprlib
 
 from IPython.display import HTML,display,Image,IFrame
-import pandas as pd
-import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib_venn import venn2, venn2_circles
 import seaborn as sns
+import pandas as pd
+import numpy as np
 from sklearn.decomposition import PCA
 import rpy2.robjects as ro
 import rpy2.rinterface as ri
@@ -635,7 +637,7 @@ def spike(exp, backend='Agg'):
     Align sequencing files to ERCC index using STAR aligner.
     '''
     plt.switch_backend(backend)
-
+    plt.clf()
     output("Processing with ERCC spike-in: {:%Y-%m-%d %H:%M:%S}\n".format(datetime.now()), exp.log_file)
         
     ERCC_folder='{}ERCC/'.format(exp.scratch)
@@ -742,6 +744,7 @@ def spike(exp, backend='Agg'):
         merged_spike['log2_Mix_2']= np.log2(merged_spike.Mix_2)
 
         # Plot ERCC spike.
+        plt.clf()
         sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
         M1 = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike, size=10, aspect=1, ci=None)
         M1.set_ylabels(label='spike-in counts (log2)')
@@ -753,6 +756,7 @@ def spike(exp, backend='Agg'):
         if run_main:
             plt.close()
 
+        plt.clf()
         sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
         M2 = sns.lmplot(x='log2_Mix_2', y='log', hue='Sample', data=merged_spike, size=10, aspect=1, ci=None)
         M2.set_ylabels(label='spike-in counts (log2)')
@@ -764,6 +768,7 @@ def spike(exp, backend='Agg'):
         if run_main:
             plt.close()
 
+        plt.clf()
         sns.set(context='paper', font_scale=2, style='white',rc={'figure.dpi': 300, 'figure.figsize':(6,6)})
         setB = sns.lmplot(x='log2_Mix_1', y='log', hue='Sample', data=merged_spike[merged_spike.subgroup == 'B'], size=10, aspect=1, ci=None)
         setB.set_ylabels(label='spike-in counts (log2)')
@@ -1104,6 +1109,7 @@ def plot_PCA(counts, colData, out_dir, name, test_condition, backend='Agg'):
         bpca_df.index = counts.T.index
         bpca_df['name']= bpca_df.index
 
+        plt.clf()
         fig = plt.figure(figsize=(8,8), dpi=300)
         ax = fig.add_subplot(111)
         if len(colData) == 0:
@@ -1614,8 +1620,7 @@ def plot_exp(data, plot_dir,exp_type, name, log_file, backend='Agg'):
     '''
     output('Starting global sample expression comparisons.', log_file)
 
-    if run_main:
-        plt.clf()
+    plt.clf()
     sns.set(context='paper', font='Arial', style='white',rc={'figure.dpi':300,'figure.figsize':(4,4)})
     pl=sns.boxplot(data=data, color='darkgrey', medianprops={'color':'red'})
     pl.set_ylabel('Expression Counts\n({})'.format(exp_type))
@@ -1834,7 +1839,7 @@ def volcano(results, sig_up, sig_down, name, out_dir, backend='Agg'):
     '''
     plt.switch_backend(backend)
 
-
+    plt.clf()    
     sns.set(context='paper', style='white', font_scale=1)
     fig = plt.figure(figsize=(6,6), dpi=300)
     ax = fig.add_subplot(111)
@@ -1961,6 +1966,7 @@ def clustermap(exp):
         if len(sig) < 2:
             output('There are not enough significantly differentially expressed genes with 2 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), exp.log_file)
         else:
+            plt.clf()
             CM = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sig)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM.savefig('{}{}_2FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM.savefig('{}{}_2FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
@@ -1972,6 +1978,7 @@ def clustermap(exp):
         if len(sig15) < 2:
             output('There are not enough significantly differentially expressed genes with 1.5 fold chagnes in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), exp.log_file)
         else:
+            plt.clf()
             CM15 = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sig15)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM15.savefig('{}{}_1.5FC_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM15.savefig('{}{}_1.5FC_Heatmap.svg'.format(out_dir,comparison), dpi=300)
@@ -1983,6 +1990,7 @@ def clustermap(exp):
         if len(sigAll) < 2:
             output('There are not enough significantly differentially expressed genes without a fold change in {comparison}.  Ignoring heatmap for this group. \n'.format(comparison=comparison), exp.log_file)
         else:
+            plt.clf()
             CM15 = sns.clustermap(rlog[rlog.gene_name.apply(lambda x: x in sigAll)].drop('gene_name',axis=1), z_score=0, method='complete', cmap='RdBu_r', yticklabels=False)
             CM15.savefig('{}{}_noFCfilter_Heatmap.png'.format(out_dir,comparison), dpi=300)
             CM15.savefig('{}{}_noFCfilter_Heatmap.svg'.format(out_dir,comparison), dpi=300)
@@ -2075,6 +2083,7 @@ def gsea_barplot(out_dir,pos_file,neg_file,gmt_name,max_number=20, backend='Agg'
     top_neg =  neg.NAME.tolist()[0]
     neg[gmt_name] = [' '.join(name.split('_')[1:]) for name in neg.NAME.tolist()]
     
+    plt.clf()
     sns.set(context='paper', font='Arial',font_scale=.9, style='white', rc={'figure.dpi': 300, 'figure.figsize':(8,6)})
     fig,(ax1,ax2) = plt.subplots(ncols=1, nrows=2)
     fig.suptitle('{} GSEA enrichment\n(q<0.05, max {})'.format(gmt_name, max_number))
@@ -2157,7 +2166,7 @@ def GSEA(exp):
             lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
             output('Using Wald statistic for gene preranking.', exp.log_file)
-            rnk = '{}/{}_stat.rnk'.format(out_compare,comparison)
+            rnk = '{}_stat.rnk'.format(comparison)
 
             if exp.genome == 'mm10':
                 results['Ens_ID'] = [ID.split('.')[0] for ID in results.index.tolist()]
@@ -2174,7 +2183,7 @@ def GSEA(exp):
 
                 command_list = ['module rm python java perl share-rpms65',
                                 'source activate RNAseq',
-                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk {rnk} -scoring_scheme weighted -rpt_label {comparison}_{name}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
+                                'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk "{rnk}" -scoring_scheme weighted -rpt_label {comparison}_{name}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
                                ] #for shrunken lfc: 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2)
 
                 exp.job_id.append(send_job(command_list=command_list, 
@@ -2228,7 +2237,7 @@ def plot_venn2(Series, string_name_of_overlap, folder, backend='Agg'):
     plt.switch_backend(backend)
 
     os.makedirs(folder, exist_ok=True)
-
+    plt.clf()
     plt.figure(figsize=(7,7))
     
     font = {'family': 'sans-serif',
@@ -2279,14 +2288,14 @@ def overlaps(exp):
                     key= '{}_{}'.format(overlap,name)
                     exp.overlap_results['{}_overlap'.format(key)] = exp.sig_lists[comparison_list[0]][name] & exp.sig_lists[comparison_list[1]][name] 
                     exp.overlap_results['{}_uniqueA'.format(key)] = exp.sig_lists[comparison_list[0]][name] - exp.sig_lists[comparison_list[1]][name]
-                    exp.overlap_results['{}_uniqueB'.format(key)] = exp.sig_lists[comparison_list[1]][name] - exp.sig_lists[comparison_list[2]][name]
+                    exp.overlap_results['{}_uniqueB'.format(key)] = exp.sig_lists[comparison_list[1]][name] - exp.sig_lists[comparison_list[0]][name]
 
-                    if len(exp.overlap_results[key]) == 0:
+                    if len(exp.overlap_results['{}_overlap'.format(key)]) == 0:
                         output('{}_{} have no overlapping genes'.format(overlap,name), exp.log_file)
                     else:
-                        venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results[key]),
-                                          len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results[key]),
-                                          len(exp.overlap_results[key])
+                        venn = pd.Series([len(exp.sig_lists[comparison_list[0]][name])-len(exp.overlap_results['{}_overlap'.format(key)]),
+                                          len(exp.sig_lists[comparison_list[1]][name])-len(exp.overlap_results['{}_overlap'.format(key)]),
+                                          len(exp.overlap_results['{}_overlap'.format(key)])
                                          ],
                                          index= comparison_list + ['Overlap']
                                         )
