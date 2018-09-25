@@ -89,8 +89,8 @@ def html_header():
                     ])
 
 def val_folder(folder):
-    folder = '' if folder == '/' else folder
-    return folder if folder.endswith('/') else '{}/'.format(folder)
+    folder = folder if folder.endswith('/') else '{}/'.format(folder)
+    return '' if folder == '/' else folder
 
 def rout_write(rout):
     '''
@@ -418,26 +418,28 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     write_job.write(cmd)
     write_job.close()
     os.system('bsub < {}'.format(job_path_name))
-    output('sending job ID_{}...'.format(str(rand_id)), log_file)
-    time.sleep(1) #too many conda activations at once sometimes leads to inability to activate during a job.
+    output('sending {} as ID_{}...'.format(job_name,rand_id), log_file)
+    time.sleep(2) #too many conda activations at once sometimes leads to inability to activate during a job.
     
     return rand_id
 
-def job_wait(id_list, job_log_folder, log_file):
+def job_wait(id_list, log_file):
     '''
     Waits for jobs sent by send job to finish.
     '''
-    running = True
-    while running:
-        jobs_list = os.popen('sleep 60|bhist -w').read()
+    waiting = True
+    while waiting:
+        with os.popen('bhist -w') as stream:
+            job_list = stream.read()
         current=[]
         for rand_id in id_list:
             if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) != 0:
                 current.append(rand_id)
         if len(current) == 0:
-            running = False
+            waiting = False
         else:
             output('Waiting for jobs to finish... {:%Y-%m-%d %H:%M:%S}'.format(datetime.now()), log_file)
+            time.sleep(60)
 
 def stage(exp):
     '''
@@ -488,7 +490,7 @@ def fastqc(exp):
                          )
 
     #Wait for jobs to finish
-    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+    job_wait(exp.job_id, exp.log_file)
     
     #move to qc folder
     fastqc_files = glob.glob('{}*.zip'.format(exp.fastq_folder))
@@ -543,7 +545,7 @@ def fastq_screen(exp):
         time.sleep(1)
     
     #Wait for jobs to finish
-    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+    job_wait(exp.job_id, exp.log_file)
     
     #move to qc folder        
     fastqs_files = glob.glob('{}*screen*'.format(exp.fastq_folder))
@@ -610,7 +612,7 @@ def trim(exp):
                                  )
             
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
 
         scan += 1
     
@@ -686,7 +688,7 @@ def spike(exp, backend='Agg'):
                                  )
 
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
 
         scan += 1
 
@@ -853,7 +855,7 @@ def star(exp):
                 time.sleep(5)
 
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
 
         scan += 1
 
@@ -955,7 +957,7 @@ def rsem(exp):
                 time.sleep(5)
 
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
 
         scan += 1
 
@@ -1011,7 +1013,7 @@ def rsem(exp):
                      )
     
     #Wait for jobs to finish
-    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+    job_wait(exp.job_id, exp.log_file)
     
     counts = read_pd('{}RSEM.count.matrix.txt'.format(out_dir))
     counts.columns = columns
@@ -1068,7 +1070,7 @@ def kallisto(exp):
                                  )
 
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
             
         scan += 1
 
@@ -2198,7 +2200,7 @@ def GSEA(exp):
                 time.sleep(1)
 
     #Wait for jobs to finish
-    job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+    job_wait(exp.job_id, exp.log_file)
 
     for comparison,design in exp.designs.items():
         for name,gset in gmts.items():
@@ -2424,7 +2426,7 @@ def final_qc(exp):
                          )
         
         #Wait for jobs to finish
-        job_wait(id_list=exp.job_id, job_log_folder=exp.job_folder, log_file=exp.log_file)
+        job_wait(exp.job_id, exp.log_file)
 
         if os.path.isdir('{}multiqc_data'.format(exp.scratch)):
             copytree('{}multiqc_data'.format(exp.scratch), '{}/QC/multiqc_data'.format(exp.scratch))
@@ -2495,6 +2497,9 @@ def final_qc(exp):
         raise RuntimeError('Error during MultiQC. Fix problem then resubmit with same command to continue from last completed step.')
 
 def finish(exp):
+    
+    job_wait(exp.job_id, exp.log_file)
+    
     try:
 
         if os.path.isdir('{}/Fastq'.format(exp.scratch)):
