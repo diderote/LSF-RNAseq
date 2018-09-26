@@ -7,9 +7,6 @@ Tasks: #Default is 'All'
   Align: yes #if no, include path to count matrix below
   ERCC_align: no # yes to align ERCC spike-ins using STAR.
   Differential_Expression: yes 
-  Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via RSEM-STAR or to genome via STAR (Default: Transcript)
-  Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
-  GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.
 #### Experimental Setup ####
 Samples:   
   1: 'Name' # Add more if needed
@@ -27,10 +24,13 @@ Fastq_directory: /path/to/fastq/directory/
 Sequencing_type: paired #'paired' or 'single'
 Stranded: yes # or no if library prep was stranded
 Sequencer: Nextseq # or HiSeq
+Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via RSEM-STAR or to genome via STAR (Default: Transcript)
 #### Differential Expression Options ####
 Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
+GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.
+Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
 Conditions: #Add as many as needed. Name as desired.
-  A: 1,2,3 
+  A: 1,2,3,4
   B: 4,5,6
   C: 7,8,9
   D: 10,11,12

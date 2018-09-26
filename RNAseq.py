@@ -201,7 +201,7 @@ def parse_yaml(experimental_file):
             raise IOError("Count Matrix Not Found.")
     elif yml['Tasks']['Align'] == True:
         #Alignment mode. Default is transcript.
-        exp.alignment_mode = 'gene' if yml['Tasks']['Alignment_Mode'].lower() == 'gene' else 'transcript'
+        exp.alignment_mode = 'gene' if yml['Alignment_Mode'].lower() == 'gene' else 'transcript'
         if exp.alignment_mode == 'gene':
             exp.tasks_complete.append('RSEM')
         elif exp.alignment_mode == 'transcript':
@@ -254,7 +254,7 @@ def parse_yaml(experimental_file):
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/gencode_gene_dict.pkl'
             
     #GC_normalizaton
-    if yml['Tasks']['GC_Normalization']:
+    if yml['GC_Normalization']:
         exp.gc_norm = True
     else:
         exp.tasks_complete.append('GC')
@@ -308,10 +308,10 @@ def parse_yaml(experimental_file):
         exp.de_tests = {key:test for key,test in yml['Designs'].items() if test['Test_condition'] is not None}
         for key,test in exp.de_tests.items():
             all_conditions = test['All_conditions'].split(',')
-            all_samples = [exp.samples[int(sample)] for sample in test['All_samples'].split(',')]
+            all_samples = list({exp.samples[int(sample)] for sample in test['All_samples'].split(',')})
             exp.designs[key] = {'all_samples': all_samples}
             for condition in all_conditions:
-                exp.designs[key][condition] = [exp.samples[int(sample)] for sample in exp.conditions[condition]]
+                exp.designs[key][condition] = list({exp.samples[int(sample)] for sample in exp.conditions[condition]})
             exp.designs[key]['Test_condition'] = test['Test_condition'].split(',') 
 
             if len(exp.designs[key]['Test_condition']) == 1:
@@ -320,7 +320,7 @@ def parse_yaml(experimental_file):
             elif len(exp.designs[key]['Test_condition']) == 2:
                 exp.designs[key]['reduced'] = '~' + ' + '.join(['{}'.format(condition) for condition in all_conditions])
                 intersection='{}:{}'.format(exp.designs[key]['Test_condition'][0],exp.designs[key]['Test_condition'][1])
-                exp.designs[key]['design'] = '{} + {}'.format(exp.designs[key]['reduced'],intersection) if len(all_conditions) > 2 else '~{}'.format(intersection)
+                exp.designs[key]['design'] = '{} + {}'.format(exp.designs[key]['reduced'],intersection)
             else:
                 raise ValueError('Cannot handle this experimental design.')
             exp.designs[key]['reduced'] = '~1' if exp.designs[key]['reduced'] == '~' else exp.designs[key]['reduced']
@@ -353,7 +353,7 @@ def parse_yaml(experimental_file):
             output("\nI don't know the {} normalization method.  Using default median-ratios.\n".format(yml['Normalization']), exp.log_file)
 
     #Initialize DE sig overlaps
-    exp.de_sig_overlap = True if yml['Tasks']['Signature_Mode'].lower() == 'combined' else False
+    exp.de_sig_overlap = True if yml['Signature_Mode'].lower() == 'combined' else False
     if exp.de_sig_overlap == False or exp.alignment_mode.lower() == 'transcript':
         exp.tasks_complete = exp.tasks_complete + ['Kallisto','Sleuth']
         
@@ -430,7 +430,7 @@ def job_wait(id_list, log_file):
     waiting = True
     while waiting:
         with os.popen('bhist -w') as stream:
-            job_list = stream.read()
+            jobs_list = stream.read()
         current=[]
         for rand_id in id_list:
             if len([j for j in re.findall('ID_(\d+)', jobs_list) if j == rand_id]) != 0:
