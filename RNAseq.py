@@ -157,7 +157,8 @@ def parse_yaml(experimental_file):
             #For output of R logs into job_log_folder
             os.chdir(exp.job_folder)
 
-            output('\n#############\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format(datetime.now()),exp.log_file)
+            output('\n{}\nRestarting pipeline on {:%Y-%m-%d %H:%M:%S}, from last completed step.'.format('#'*30,datetime.now()),exp.log_file)
+            output('\nExperimental variables:\n {}'.format(exp),exp.log_file)
 
             return exp 
         else:
@@ -1442,7 +1443,7 @@ def DESeq2(exp):
         if exp.norm.lower() == 'median-ratios':
             output('Using DESeq2 standard normalization of scaling by median of the ratios of observed counts.', exp.log_file)
             
-            output('Performing {} test for differential expression for {}\n'.format(design['Test_type'],comparison), exp.log_file)
+            output('Performing {} test for differential expression for {}\n'.format(designs['Test_type'],comparison), exp.log_file)
             dds[comparison] = deseq.DESeq(dds[comparison])
             
             if designs['Test_type'] == 'lrt':
@@ -2467,7 +2468,7 @@ def final_qc(exp):
         #Summary plots for FastQC data
         fastqc_file = '{}/QC/multiqc_data/multiqc_fastqc.txt'.format(exp.scratch)
         if os.path.isfile(fastqc_file):
-            gen_stats = read_pd('multiqc_general_stats.txt')
+            gen_stats = read_pd('{}/QC/multiqc_data/multiqc_general_stats.txt'.format(exp.scratch))
             if exp.seq_type == 'paired':
                 samples = ['{}_R2'.format(sample) for sample in samples]
             plot_col(df=gen_stats.loc[samples,'FastQC_mqc-generalstats-fastqc-total_sequences']/1e6,
