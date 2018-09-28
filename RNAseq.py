@@ -14,7 +14,7 @@ To do:
     - add sleuth for mouse and make compatable with new v.7 strategy 
     - optimize STAR
     - add summary statistics at finish
-        -fragment lenght
+        -fragment length
         -mapping ..etc
 
 '''
@@ -1453,11 +1453,11 @@ def DESeq2(exp):
             output('{} results type: '.format(comparison), exp.log_file)
 
             #get results
-            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'condition','not_condition']))))
+            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'condition','not_condition']))))
             exp.de_results['DE2_{}'.format(comparison)].index = data.index
             
             #get shrunken lfc (apeglm) method)
-            exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('{}_{}_vs_{}'.format('{}'.format(design.split(' ')[-1].split('~')[-1]),'condition','not_condition')), type='apeglm')))
+            exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('{}_{}_vs_{}'.format('{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'condition','not_condition')), type='apeglm')))
             exp.de_results['shrunkenLFC_{}'.format(comparison)].index = data.index
             output('Using apeglm method for lfc shrinkage for {}.'.format(comparison), exp.log_file)
 
