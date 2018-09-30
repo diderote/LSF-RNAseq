@@ -16,6 +16,8 @@ To do:
     - add summary statistics at finish
         -fragment length
         -mapping ..etc
+    - fine tune DE tests for lfcshrink or GC norm option per test
+    - if restarting with papermill... make different ipynb
 
 '''
 __author__ = 'Daniel L. Karl'
@@ -135,7 +137,7 @@ def parse_yaml(experimental_file):
     exp = Experiment()
     
     #Setting Scratch folder
-    if yml['Lab'].lower() == 'nimer':
+    if yml['Pegasus_Project'] == 'nimerlab':
         exp.scratch = '/scratch/projects/nimerlab/DANIEL/staging/RNAseq/{}/'.format(yml['Name'])
     else:
         exp.scratch = val_folder('{}{}/'.format(yml['Scratch_folder'],yml['Name'])) 
@@ -225,16 +227,7 @@ def parse_yaml(experimental_file):
         raise IOError('Please specify whether or not to perform alignment.')   
     
     #Lab specific files
-    if yml['Lab'].lower() == 'other':
-        exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
-        exp.genome_indicies['STAR'] = yml['STAR_index']
-        exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
-        exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
-        exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
-        exp.genome_indicies['Gene_names'] = yml['Gene_names']
-        if exp.genome == 'mm10':
-            exp.genome_indicies['GMT'] = val_folder(yml['GSEA_mouse_gmx_folder'])
-    elif yml['Lab'].lower() == 'nimer':
+    if yml['Pegasus_Project'] == 'nimerlab':
         exp.genome_indicies['ERCC'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/STARIndex'
         exp.genome_indicies['GSEA_jar'] = '/projects/ctsi/nimerlab/DANIEL/tools/GSEA/gsea-3.0.jar'
         if exp.genome == 'mm10':
@@ -253,7 +246,16 @@ def parse_yaml(experimental_file):
             exp.genome_indicies['STAR'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/STAR'
             exp.genome_indicies['Kallisto'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/NCBI-RNAseq/Kallisto/GRCh37.transcripts.idx'
             exp.genome_indicies['Gene_names'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/Hg19/gencode_gene_dict.pkl'
-            
+    else:
+        exp.genome_indicies['RSEM_STAR'] = yml['RSEM_STAR_index']
+        exp.genome_indicies['STAR'] = yml['STAR_index']
+        exp.genome_indicies['Kallisto'] = yml['Kallisto_index']
+        exp.genome_indicies['ERCC'] = yml['ERCC_STAR_index']
+        exp.genome_indicies['GSEA_jar'] = yml['GSEA_jar']
+        exp.genome_indicies['Gene_names'] = yml['Gene_names']
+        if exp.genome == 'mm10':
+            exp.genome_indicies['GMT'] = val_folder(yml['GSEA_mouse_gmx_folder'])
+    
     #GC_normalizaton
     if yml['GC_Normalization']:
         exp.gc_norm = True
@@ -261,7 +263,7 @@ def parse_yaml(experimental_file):
         exp.tasks_complete.append('GC')
 
     #Support Files:
-    if yml['Lab'].lower() == 'nimer':
+    if yml['Pegasus_Project'] == 'nimerlab':
         exp.genome_indicies['ERCC_Mix'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/ERCC_spike/cms_095046.txt'
         if exp.genome == 'mm10':
             exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/Mus_musculus/mm10/mm10_GC_Content.txt'
@@ -269,7 +271,7 @@ def parse_yaml(experimental_file):
             exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
         elif exp.genome == 'hg19':
             exp.genome_indicies['GC_Content'] = '/projects/ctsi/nimerlab/DANIEL/tools/genomes/H_sapiens/hg38_GC_Content.txt'
-    elif yml['Lab'].lower() == 'other':
+    else:
         exp.genome_indicies['ERCC_Mix'] = yml['ERCC_Mix_file']
         exp.genome_indicies['GC_Content'] = yml['GC_Content_file']
 
@@ -291,7 +293,7 @@ def parse_yaml(experimental_file):
     #exp.trim = yml['trim'] if yml['trim'] is not None else exp.trim
 
     #Project
-    exp.project = 'nimerlab' if yml['Lab'].lower() == 'nimer' else yml['Pegasus_Project']
+    exp.project = yml['Pegasus_Project']
     
     #Sample Names
     exp.samples={key:name for key,name in yml['Samples'].items() if (name != 'Name') and (name is not None)}
@@ -326,7 +328,7 @@ def parse_yaml(experimental_file):
                 raise ValueError('Cannot handle this experimental design.')
             exp.designs[key]['reduced'] = '~1' if exp.designs[key]['reduced'] == '~' else exp.designs[key]['reduced']
 
-            exp.designs[key]['colData'] = pd.DataFrame({'{}'.format(condition): ['condition' if sample in exp.designs[key]['{}'.format(condition)] else 'not_condition' for sample in all_samples] for condition in all_conditions},
+            exp.designs[key]['colData'] = pd.DataFrame({'{}'.format(condition): ['yes' if sample in exp.designs[key]['{}'.format(condition)] else 'no' for sample in all_samples] for condition in all_conditions},
                                                         index=all_samples) 
             exp.designs[key]['Test_type'] = exp.de_tests[key]['Test_type'].lower()
         
@@ -352,6 +354,10 @@ def parse_yaml(experimental_file):
             output('\nNormalizing samples for differential expression analysis using deseq2 size factors determined using default median of ratios method.\n', exp.log_file)
         else:
             output("\nI don't know the {} normalization method.  Using default median-ratios.\n".format(yml['Normalization']), exp.log_file)
+
+        exp.lfcshrink = True if yml['LFCshrink'] else False
+        if exp.lfcshrink:
+            output("\nReporting additional file with log fold change shrinkage for differential expression tests.", exp.log_file)
 
     #Initialize DE sig overlaps
     exp.de_sig_overlap = True if yml['Signature_Mode'].lower() == 'combined' else False
@@ -1119,10 +1125,10 @@ def plot_PCA(counts, colData, out_dir, name, test_condition, backend='Agg'):
             ax.scatter(bpca_df[0], bpca_df[1], marker='o', color='black')
         else:
             bpca_df['group']= colData[test_condition].tolist()
-            ax.scatter(bpca_df[bpca_df.group == 'condition'][0],bpca_df[bpca_df.group == 'condition'][1], marker='o', color='blue')
-            ax.scatter(bpca_df[bpca_df.group == 'not_condition'][0],bpca_df[bpca_df.group == 'not_condition'][1], marker='o', color='red')
-            red_patch = mpatches.Patch(color='red', alpha=.4, label='Control')
-            blue_patch = mpatches.Patch(color='blue', alpha=.4, label='Experimental')
+            ax.scatter(bpca_df[bpca_df.group == 'yes'][0],bpca_df[bpca_df.group == 'yes'][1], marker='o', color='blue')
+            ax.scatter(bpca_df[bpca_df.group == 'no'][0],bpca_df[bpca_df.group == 'no'][1], marker='o', color='red')
+            red_patch = mpatches.Patch(color='red', alpha=.4, label='Not {}'.format(test_condition))
+            blue_patch = mpatches.Patch(color='blue', alpha=.4, label=test_condition)
 
         ax.set_xlabel('PCA Component 1: {:0.1%} variance'.format(pca_score[0]))
         ax.set_ylabel('PCA Component 2: {:0.1%} varinace'.format(pca_score[1]))
@@ -1310,12 +1316,13 @@ def RUV(RUV_data,test_type,design,reduced,colData,norm_type,log,ERCC_counts,comp
             #extract results and relabel samples and genes
             output('{} results type: '.format(comparison), log)
 
-            results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'condition','not_condition']))))
+            results = pandas2ri.ri2py(as_df(deseq.results(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'yes','no']))))
             results.index = RUV_data.name
 
-            lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'condition','not_condition']), type='ashr')))
-            lfc.index = RUV_data.name
-            output('Switched to ashr method for lfcShrinkage for {} with RUV normalizaiton.'.format(comparison), log)
+            if exp.lfcshrink:
+                output('Perfomring log fold change shrinking for {}.  Switched to ashr method for lfc shrinkage with RUV normalizaiton.'.format(comparison), log)
+                lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'yes','no']), type='ashr')))
+                lfc.index = RUV_data.name
 
         RUV_normcounts = pandas2ri.ri2py(as_df(counts(RUV_dds, normalized=True)))
         RUV_normcounts.columns = RUV_data.drop(columns='name').columns
@@ -1453,14 +1460,15 @@ def DESeq2(exp):
             output('{} results type: '.format(comparison), exp.log_file)
 
             #get results
-            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'condition','not_condition']))))
+            exp.de_results['DE2_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv(['{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'yes','no']))))
             exp.de_results['DE2_{}'.format(comparison)].index = data.index
             
             #get shrunken lfc (apeglm) method)
-            exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('{}_{}_vs_{}'.format('{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'condition','not_condition')), type='apeglm')))
-            exp.de_results['shrunkenLFC_{}'.format(comparison)].index = data.index
-            output('Using apeglm method for lfc shrinkage for {}.'.format(comparison), exp.log_file)
-
+            if exp.lfcshrink:
+                output('Perfomring log fold change shrinkage for {} using the "apeglm" method.'.format(comparison), exp.log_file)
+                exp.de_results['shrunkenLFC_{}'.format(comparison)] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=as_cv('{}_{}_vs_{}'.format('{}'.format(designs['design'].split(' ')[-1].split('~')[-1]),'yes','no')), type='apeglm')))
+                exp.de_results['shrunkenLFC_{}'.format(comparison)].index = data.index
+            
             #regularized log transformed
             exp.de_results['{}_rlog_counts'.format(comparison)] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds[comparison], blind=False)))
             exp.de_results['{}_rlog_counts'.format(comparison)].columns = data.columns
@@ -2544,19 +2552,18 @@ def finish(exp):
         raise RuntimeError('Error finishing pipeline. Fix problem then resubmit with same command to continue from last completed step.')
 
 def validated_run(task,func,exp):
-    pipe_stage = task
     try:
         if task in exp.tasks_complete:
-            output('Skipping... ', exp.log_file)
+            output('Skipping {}...'.format(task), exp.log_file)
             return exp
         else:
             return func(exp)
     except:
-        output('Error in {}.'.format(pipe_stage), exp.log_file)
+        output('Error in {}.'.format(task), exp.log_file)
         filename= '{}{}_incomplete.pkl'.format(exp.scratch,exp.name)
         with open(filename, 'wb') as experiment:
             pickle.dump(exp, experiment)
-        raise RuntimeError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(pipe_stage))
+        raise RuntimeError('Error in {}. Fix problem then resubmit with same command to continue from last completed step.'.format(task))
 
 def pipeline(experimental_file):
         pipe_stage = 'parsing_file'

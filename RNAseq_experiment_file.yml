@@ -29,6 +29,7 @@ Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via 
 Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
 GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.
 Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
+LFCshrink: no # Whether or not perform additional lfc shrink for differential expression.
 Conditions: #Add as many as needed. Name as desired.
   A: 1,2,3,4
   B: 4,5,6
@@ -61,7 +62,7 @@ Overlaps:
 Count_matrix: /path/to/count/matrix.txt #or xls.
 Spike_matrix: /path/to/spike/count/matrix.txt
 #### Lab and File Options ####
-Lab: Nimer #default 'Nimer'. If 'other', fill in extra details below
+Pegasus_Project: nimerlab #if nimerlab, no need to fill in the rest below.
 Scratch_folder: /path/to/scratch/folder  #staging directory
 RSEM_STAR_index: /path/to/genome/index/folder/name
 STAR_index: /path/to/genome/index/folder/name
@@ -72,4 +73,3 @@ GC_Content_file: /path/to/GC/Content/file.txt
 GSEA_jar: /path/to/GSEA.jar
 GSEA_mouse_gmx_folder: /path/to/mouse/gmts #generated from GSEA using Mouse_ensemble_gene chip2chip
 Gene_names: /path/to/gene/name/dict
-Pegasus_Project:
