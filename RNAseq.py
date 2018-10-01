@@ -1323,6 +1323,7 @@ def RUV(RUV_data,test_type,design,reduced,colData,norm_type,log,ERCC_counts,comp
                 output('Perfomring log fold change shrinking for {}.  Switched to ashr method for lfc shrinkage with RUV normalizaiton.'.format(comparison), log)
                 lfc = pandas2ri.ri2py(as_df(deseq.lfcShrink(RUV_dds, contrast=as_cv(['{}'.format(design.split(' ')[-1].split('~')[-1]),'yes','no']), type='ashr')))
                 lfc.index = RUV_data.name
+                lfc = None
 
         RUV_normcounts = pandas2ri.ri2py(as_df(counts(RUV_dds, normalized=True)))
         RUV_normcounts.columns = RUV_data.drop(columns='name').columns
@@ -1400,10 +1401,10 @@ def DESeq2(exp):
     
     if exp.gc_norm:
         output('Using GC normalized counts for differential expression.\n', exp.log_file)
-        count_matrix = exp.gc_count_matrix
+        count_matrix = exp.gc_count_matrix[list(exp.samples.values())]
     else:
         output('Using STAR or STAR-RSEM aligned counts for differential expression.\n', exp.log_file)
-        count_matrix = round(exp.count_matrix)
+        count_matrix = round(exp.count_matrix[list(exp.samples.values())])
     
     dds={}
     
@@ -1539,14 +1540,15 @@ def DESeq2(exp):
                                                            sep="\t"
                                                           )
         ##Shrunken LFC using apeglm or ashr method
-        exp.de_results['shrunkenLFC_{}'.format(comparison)].sort_values(by='log2FoldChange', ascending=False, inplace=True)
-        exp.de_results['shrunkenLFC_{}'.format(comparison)]['gene_name']=exp.de_results['shrunkenLFC_{}'.format(comparison)].index
-        exp.de_results['shrunkenLFC_{}'.format(comparison)]['gene_name']=exp.de_results['shrunkenLFC_{}'.format(comparison)].gene_name.apply(lambda x: x.split("_")[1])
-        exp.de_results['shrunkenLFC_{}'.format(comparison)].to_csv('{}{}-DESeq2-shrunken-LFC.txt'.format(out_dir,comparison), 
-                                                                   header=True, 
-                                                                   index=True, 
-                                                                   sep="\t"
-                                                                  )
+        if exp.lfcshrink:
+            exp.de_results['shrunkenLFC_{}'.format(comparison)].sort_values(by='log2FoldChange', ascending=False, inplace=True)
+            exp.de_results['shrunkenLFC_{}'.format(comparison)]['gene_name']=exp.de_results['shrunkenLFC_{}'.format(comparison)].index
+            exp.de_results['shrunkenLFC_{}'.format(comparison)]['gene_name']=exp.de_results['shrunkenLFC_{}'.format(comparison)].gene_name.apply(lambda x: x.split("_")[1])
+            exp.de_results['shrunkenLFC_{}'.format(comparison)].to_csv('{}{}-DESeq2-shrunken-LFC.txt'.format(out_dir,comparison), 
+                                                                       header=True, 
+                                                                       index=True, 
+                                                                       sep="\t"
+                                                                      )
 
         #Regularized log2 expected counts.
         exp.de_results['{}_rlog_counts'.format(comparison)].to_csv('{}{}-rlog-counts.txt'.format(out_dir,comparison), 
@@ -2170,11 +2172,12 @@ def GSEA(exp):
             results=exp.de_results['DE2_{}'.format(comparison)].dropna()
 
             #generate ranked list based on shrunken log2foldchange
-            lfc = exp.de_results['shrunkenLFC_{}'.format(comparison)].dropna()
-            lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
-            lfc.index = lfc.gene_name
-            lfc = lfc.log2FoldChange.dropna()
-            lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
+            if exp.lfcshrink:
+                lfc = exp.de_results['shrunkenLFC_{}'.format(comparison)].dropna()
+                lfc.sort_values(by='log2FoldChange', ascending=False, inplace=True)
+                lfc.index = lfc.gene_name
+                lfc = lfc.log2FoldChange.dropna()
+                lfc.to_csv('{}/{}_shrunkenLFC.rnk'.format(out_compare,comparison), header=False, index=True, sep="\t")
 
             output('Using Wald statistic for gene preranking.', exp.log_file)
             rnk = '{}_stat.rnk'.format(comparison)
@@ -2195,7 +2198,10 @@ def GSEA(exp):
                 command_list = ['module rm python java perl share-rpms65',
                                 'source activate RNAseq',
                                 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk "{rnk}" -scoring_scheme weighted -rpt_label {comparison}_{name}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk=rnk)
-                               ] #for shrunken lfc: 'java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2)
+                               ] 
+
+                if exp.lfcshrink:
+                    command_list.append('java -cp {jar} -Xmx2048m xtools.gsea.GseaPreranked -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/{gset}.v6.1.symbols.gmt -norm meandiv -nperm 1000 -rnk {rnk2} -scoring_scheme weighted -rpt_label {comparison}_{gset}_shrunkenLFC -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'.format(jar=exp.genome_indicies['GSEA_jar'],gset=gset,comparison=comparison,name=name,rnk2=rnk2))
 
                 exp.job_id.append(send_job(command_list=command_list, 
                                            job_name='{}_{}_GSEA'.format(comparison,name),

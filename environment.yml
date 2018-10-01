@@ -24,7 +24,7 @@ dependencies:
 - fastq-screen=0.11.3
 - fastqc=0.11.6
 - gseapy=0.9.1
-- jupyter=5
+- jupyterlab=0.34
 - kallisto=0.43.0
 - multiqc=1.6a0
 - pybedtools=0.7.10
@@ -34,7 +34,7 @@ dependencies:
 - rsem=1.3.0
 - samtools=1.3
 - star=2.6.0c
-- matplotlib-venn=0.11.5=
+- matplotlib-venn=0.11.5
 - pandas=0.21.1
 - papermill=0.14.2
 - pypdf2
