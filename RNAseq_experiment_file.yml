@@ -26,7 +26,7 @@ Stranded: yes # or no if library prep was stranded
 Sequencer: Nextseq # or HiSeq
 Alignment_Mode: Transcript # Transcript or Gene. Alignemnt to transcriptome via RSEM-STAR or to genome via STAR (Default: Transcript)
 #### Differential Expression Options ####
-Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
+Normalization: Median-Ratios # Default: 'Median-Ratios' (DESeq2).  Options: 'ERCC','Empirical', 'median', 'median-ratios','full','upper', or 'ERCC_Mixed' (if Mix1 and Mix2 ERCC used in same experiment)
 GC_Normalization: no # Default: no.  Recommend 'yes' if samples were sequenced in different runs.
 Signature_Mode: DESeq2  # 'Combined' overlaps de signature of DESeq2 and Sleuth, second option is 'DESeq2'
 LFCshrink: no # Whether or not perform additional lfc shrink for differential expression.
