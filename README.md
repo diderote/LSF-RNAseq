@@ -11,15 +11,16 @@ This pipline handles processing and analyses for RNAseq data on the University o
 	- Genome alignment using STAR counts with GENCODE annotations
 6. Generation of scaled (counts per million per basepair) bigwig files from alignment (stranded or non-stranded)
 7. Optional within-sample GC normalization (useful for experiments across multiple sequencing runs).
-8. Between sample normalization options: median-ratios (DESeq2 default), or removal of unwated variation (RUVSeq) using ERCC spike-ins or empirical negative controls.
+8. Between sample normalization options: median-ratios (DESeq2 default), removal of unwated variation (RUVSeq) using ERCC spike-ins or empirical negative controls, upper quantile, full or median normalization (EDAseq).
 9. Differential expression using DESeq2 (both default and apeglm or ashr shrunken LFC are reported)
-10. PCA plots and expression boxplots of all and experimental samples, raw and normalized counts
-11. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
-12. Volcano plots generated from DESeq2 results with signifcant genes
-13. Heatmap of significantly differentially expressed genes using regularized log2 expresion counts.
-14. GO and KEGG enrichment of DE genes
-15. GSEA using ranked gene lists from DESeq2
-16. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.
+10. PCA plots and expression boxplots of all and experimental samples, raw and normalized counts.
+11. Output of normalized counts, blinded, with batch compensation, gc normlalized and raw.
+12. Optional overlap with signifiantly differentially expressed genes by DESeq2 (q<0.05, 2FC, 1.5FC, no FC filter) with Sleuth (Kallisto) q<0.05 DE genes 
+13. Volcano plots generated from DESeq2 results with signifcant genes
+14. Heatmap of significantly differentially expressed genes using regularized log2 expresion counts.
+15. GO and KEGG enrichment of DE genes
+16. GSEA using ranked gene lists from DESeq2
+17. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.
 
 Option Details:
 * Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
@@ -31,6 +32,7 @@ Option Details:
 	* ERCC = Account for unwanted variation between samples using spike in counts. (RUVSeq implementation).  Also reports ashr lfc shrunken values.
 	* ERCC_Mixed = Same as ERCC except used when ERCC Mix1 and Mix2 are used in the same experiment.  Will reduce the unwanted variance estimation to subgroup B (common concentrations in both mixes).
 	* Empirical = Account for unwanted variation between samples using non-differentially expressed genes to estimate unwanted variance (RUVSeq implementation). Also reports ashr lfc shrunken values.
+	* Standard upper quartile, full distribution or median normalizaiton based on library size (EDAseq).
 * Alignment_Mode: Whether to align to transcriptome with RSEM-STAR (default) or to genome with STAR.
 * Signature_Mode: Output signature will either be DESeq2 differentially expressed genes or an overlap of Slueth and DESeq2.
 * GC_Normalizaiton: Yes implements within-lane loess normalzation based on gene GC content (EDASeq).  Recommended for samples sequenced in different sequencing runs.  If not 'Nimer' this adds over an hour of computing time for CG content file generatation.
