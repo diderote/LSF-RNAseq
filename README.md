@@ -146,3 +146,4 @@ Experiment object can be passed to the following functions and returned: exp = f
 - RNAseq.image_display(file)
 - RNAseq.out_result(image,text)
 - RNAseq.validated_run()
+- RNAseq.quartile_norm()

@@ -227,7 +227,7 @@ def parse_yaml(experimental_file):
 
         # Standed
         exp.stranded = True if yml['Stranded'] else False
-        output(f'Processing data as {exp.seq_type}-end {('stranded' if exp.stranded else 'non-stranded')} sequencing.', exp.log_file)
+        output(f'Processing data as {exp.seq_type}-end {("stranded" if exp.stranded else "non-stranded")} sequencing.', exp.log_file)
 
         # Sequencer for trimming options
         exp.sequencer = yml['Sequencer'].lower() if yml['Sequencer'].lower() in ['nextseq', 'hiseq'] else None
@@ -855,7 +855,7 @@ def star(exp):
                                 ]
 
                 exp.job_id.append(send_job(command_list=command_list,
-                                           job_name= f'{sample}_STAR',
+                                           job_name=f'{sample}_STAR',
                                            job_log_folder=exp.job_folder,
                                            q='bigmem',
                                            mem=50000,
@@ -1317,10 +1317,6 @@ def RUV(RUV_data, test_type, design, reduced, colData, norm_type, log, ERCC_coun
             else:
                 lfc = None
 
-
-
-
-
         # Change normlaized counts
         RUV_normcounts = pandas2ri.ri2py(as_df(counts(RUV_dds, normalized=True)))
         RUV_normcounts.columns = RUV_data.drop(columns='name').columns
@@ -1513,7 +1509,7 @@ def DESeq2(exp):
             # get shrunken lfc (apeglm) method)
             if exp.lfcshrink:
                 output(f'Perfomring log fold change shrinkage for {comparison} using the "apeglm" method.', exp.log_file)
-                coef = as_cv(f'{designs['design'].split(" ")[-1].split("~")[-1]}_yes_vs_no')
+                coef = as_cv(f'{designs["design"].split(" ")[-1].split("~")[-1]}_yes_vs_no')
                 exp.de_results[f'shrunkenLFC_{comparison}'] = pandas2ri.ri2py(as_df(deseq.lfcShrink(dds[comparison], coef=coef, type='apeglm')))
                 exp.de_results[f'shrunkenLFC_{comparison}'].index = data.index
 
