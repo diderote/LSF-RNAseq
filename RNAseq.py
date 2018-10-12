@@ -149,7 +149,7 @@ def parse_yaml(experimental_file):
     if yml['Pegasus_Project'] == 'nimerlab':
         exp.scratch = f'/scratch/projects/nimerlab/DANIEL/staging/RNAseq/{yml["Name"]}/'
     else:
-        exp.scratch = val_folder(f'{yml["Scratch_folder"]}{yml["Name"]}/')
+        exp.scratch = f'{val_folder(yml["Scratch_folder"])}{yml["Name"]}/'
     os.makedirs(exp.scratch, exist_ok=True)
 
     # check whether experiment has been attempted
@@ -179,7 +179,7 @@ def parse_yaml(experimental_file):
     exp.date = f'{datetime.now():%Y-%m-%d}'
 
     # Make out directory if it doesn't exist
-    exp.out_dir = f'{yml["Output_directory"]}{exp.name}/'
+    exp.out_dir = f'{val_folder(yml["Output_directory"])}{exp.name}/'
     os.makedirs(exp.out_dir, exist_ok=True)
 
     # Log file
@@ -467,7 +467,12 @@ def stage(exp):
     # Copy Fastq to scratch fastq folder
     if os.path.exists(f'{exp.scratch}Fastq'):
         rmtree(f'{exp.scratch}Fastq')
-    copytree(exp.fastq_folder, f'{exp.scratch}Fastq')
+
+    os.makedirs(f'{exp.scratch}Fastq', exist_ok=True)
+
+    files = [file for file in glob.glob(f'{exp.fastq_folder}*') for sample in exp.samples.values() if file.endswith('.fastq.gz') & (sample in file)]
+    for file in files:
+        copy2(file, f'{exp.scratch}Fastq')
 
     exp.fastq_folder = f'{exp.scratch}Fastq/'
     exp.tasks_complete.append('Stage')
@@ -615,7 +620,7 @@ def trim(exp):
                                 ]
 
                 exp.job_id.append(send_job(command_list=command_list,
-                                           job_name=f"{exp.fastq_folder}_trim",
+                                           job_name=f"{sample}_trim",
                                            job_log_folder=exp.job_folder,
                                            q='general',
                                            mem=1000,
