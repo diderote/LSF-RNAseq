@@ -31,9 +31,9 @@ import random
 import time
 from shutil import copy2, copytree, rmtree, move
 from datetime import datetime
-import yaml
 import reprlib
 
+import yaml
 from IPython.display import HTML, display, Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -95,7 +95,7 @@ def html_header():
 
 def val_folder(folder):
     folder = folder if folder.endswith('/') else f'{folder}/'
-    return '' if folder == '/' else folder
+    return f'{os.getcwd()}/' if folder == '/' else folder
 
 
 def rout_write(rout):
@@ -1453,7 +1453,8 @@ def DESeq2(exp):
 
     dds = {}
 
-    for comparison, designs in exp.designs.items():
+    comparison_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, designs in comparison_gen:
         output(f'Beginning {comparison}: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
         colData = designs['colData']
         design = ro.Formula(designs['design'])
@@ -1538,7 +1539,7 @@ def DESeq2(exp):
                                                                       comparison=comparison,
                                                                       plot_dir=f'{exp.scratch}PCA/{comparison}/',
                                                                       de=True,
-                                                                      lfcshrink=exp.lfsshink
+                                                                      lfcshrink=exp.lfcshink
                                                                       )
 
         elif exp.norm.lower() == 'ercc_mixed':
@@ -1611,7 +1612,7 @@ def DESeq2(exp):
             exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
             exp.de_results[f'shrunkenLFC_{comparison}'].to_csv(f'{out_dir}{comparison}-DESeq2-shrunken-LFC.txt', header=True, index=True, sep="\t")
 
-        if exp.norm == 'median-ratios':
+        if exp.norm.lower() == 'median-ratios':
             count_type = f'{comparison}_rlog_counts'
         else:
             count_type = f'{comparison}_log2_normCounts'
