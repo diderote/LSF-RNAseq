@@ -1782,7 +1782,8 @@ def Principal_Component_Analysis(exp):
                  log_file=exp.log_file
                  )
 
-    for comparison, design in exp.designs.items():
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
         if exp.norm == 'median-ratios':
             count_type = f'{comparison}_rlog_counts'
         else:
@@ -1971,8 +1972,8 @@ def sigs(exp):
     out_dir = f'{exp.scratch}Sigs_and_volcano_plots/'
     os.makedirs(out_dir, exist_ok=True)
 
-    for comparison, design in exp.designs.items():
-
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
         if exp.de_sig_overlap:
             output(f'Performing overlaps of signifcant genes from Kallisto/Sleuth and STAR/RSEM/DESeq2 for {comparison}.', exp.log_file)
 
@@ -2045,7 +2046,8 @@ def clustermap(exp):
 
     heat_dir = f'{exp.scratch}Heatmaps/'
 
-    for comparison, design in exp.designs.items():
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
         out_dir = f'{heat_dir}{comparison}/'
         os.makedirs(out_dir, exist_ok=True)
 
@@ -2123,7 +2125,8 @@ def GO_enrich(exp):
     GO_dir = f'{exp.scratch}GO_enrichment/'
     os.makedirs(GO_dir, exist_ok=True)
 
-    for comparison, design in exp.designs.items():
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
         output(f'Beginning GO enrichment for {comparison}: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
 
         for name, sig in exp.sig_lists[comparison].items():
@@ -2241,7 +2244,8 @@ def GSEA(exp):
                 'Curated_Gene_Sets': 'gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c2.cgp.v6.2.symbols.gmt'
                 }
 
-    for comparison, design in exp.designs.items():
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
 
         indexpath = glob.glob(f'{out_dir}/{comparison}/Hallmarks/*/index.html')
         if len(indexpath) > 0:
@@ -2299,7 +2303,8 @@ def GSEA(exp):
     # Wait for jobs to finish
     job_wait(exp.job_id, exp.log_file)
 
-    for comparison, design in exp.designs.items():
+    design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    for comparison, design in design_gen:
         for name, gset in gmts.items():
             path = glob.glob(f'{out_dir}/{comparison}/{name}/*')[0]
             if 'index.html' == f'{path}/index.html'.split('/')[-1]:
