@@ -1539,7 +1539,7 @@ def DESeq2(exp):
                                                                       comparison=comparison,
                                                                       plot_dir=f'{exp.scratch}PCA/{comparison}/',
                                                                       de=True,
-                                                                      lfcshrink=exp.lfcshink
+                                                                      lfcshrink=exp.lfcshrink
                                                                       )
 
         elif exp.norm.lower() == 'ercc_mixed':
@@ -1592,7 +1592,7 @@ def DESeq2(exp):
                                                                                 log=exp.log_file,
                                                                                 comparison=comparison,
                                                                                 plot_dir=f'{exp.scratch}PCA/{comparison}/',
-                                                                                lfcshrink=exp.lfchrink,
+                                                                                lfcshrink=exp.lfcshrink,
                                                                                 test_type=designs['Test_type'],
                                                                                 test_condition=f'{designs["Test_condition"][-1]}'
                                                                                 )
@@ -1729,7 +1729,7 @@ def Principal_Component_Analysis(exp):
 
     plot_exp(data=exp.count_matrix[list(exp.samples.values())],
              plot_dir=all_out,
-             exp_type='raw counts',
+             ylabel='raw counts',
              name='all_raw_counts',
              log_file=exp.log_file
              )
@@ -1744,7 +1744,7 @@ def Principal_Component_Analysis(exp):
 
     plot_exp(data=exp.de_results['blind_rlog'],
              plot_dir=all_out,
-             exp_type='Normalized log$_2$',
+             ylabel='Normalized log$_2$',
              name='all_samples_blind_rlog',
              log_file=exp.log_file
              )
@@ -1760,7 +1760,7 @@ def Principal_Component_Analysis(exp):
 
     plot_exp(data=exp.de_results['complete_rlog'],
              plot_dir=all_out,
-             exp_type='Normalized log$_2$',
+             ylabel='Normalized log$_2$',
              name='all_samples_comoplete_rlog',
              log_file=exp.log_file
              )
@@ -1777,7 +1777,7 @@ def Principal_Component_Analysis(exp):
 
         plot_exp(data=exp.de_results['all_ERCC_normCounts'],
                  plot_dir=all_out,
-                 exp_type='Normalized',
+                 ylabel='Normalized',
                  name='all_ercc_normalized_normCounts',
                  log_file=exp.log_file
                  )
@@ -1799,7 +1799,7 @@ def Principal_Component_Analysis(exp):
 
         plot_exp(data=exp.de_results[count_type],
                  plot_dir=f'{out_dir}{comparison}/',
-                 exp_type='Normalized log$_2$',
+                 ylabel='Normalized log$_2$',
                  name=comparison,
                  log_file=exp.log_file
                  )
@@ -1815,7 +1815,7 @@ def Principal_Component_Analysis(exp):
 
         plot_exp(data=exp.gc_count_matrix,
                  plot_dir=all_out,
-                 exp_type='GC Normalized Raw',
+                 ylabel='GC Normalized Raw',
                  name='gc_normalized_raw_counts',
                  log_file=exp.log_file
                  )
