@@ -427,9 +427,8 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
 {str_comd_list}'''
 
     job_path_name = f'{job_log_folder}{job_name}.sh'
-    write_job = open(job_path_name, 'w')
-    write_job.write(cmd)
-    write_job.close()
+    with open(job_path_name, 'w') as file:
+        file.write(cmd)
     os.system(f'bsub < {job_path_name}')
     output(f'sending {job_name} as ID_{rand_id}...', log_file)
     time.sleep(2)  # too many conda activations at once sometimes leads to inability to activate during a job.
@@ -1520,9 +1519,9 @@ def DESeq2(exp):
                 exp.de_results[f'shrunkenLFC_{comparison}'].index = data.index
 
             # regularized log transformed
-            exp.de_results[f'{comparison}_rlog_counts'] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds[comparison], blind=False)))
-            exp.de_results[f'{comparison}_rlog_counts'].columns = data.columns
-            exp.de_results[f'{comparison}_rlog_counts'].index = data.index
+            exp.de_results[f'{comparison}_log2_normCounts'] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds[comparison], blind=False)))
+            exp.de_results[f'{comparison}_log2_normCounts'].columns = data.columns
+            exp.de_results[f'{comparison}_log2_normCounts'].index = data.index
 
         elif exp.norm.lower() == 'ercc':
             exp.de_results[f'DE2_{comparison}'], \
@@ -1612,13 +1611,8 @@ def DESeq2(exp):
             exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
             exp.de_results[f'shrunkenLFC_{comparison}'].to_csv(f'{out_dir}{comparison}-DESeq2-shrunken-LFC.txt', header=True, index=True, sep="\t")
 
-        if exp.norm.lower() == 'median-ratios':
-            count_type = f'{comparison}_rlog_counts'
-        else:
-            count_type = f'{comparison}_log2_normCounts'
-
         # Normlized counts
-        exp.de_results[count_type].to_csv(f'{out_dir}{comparison}-rlog-counts.txt', header=True, index=True, sep="\t")
+        exp.de_results[f'{comparison}_log2_normCounts'].to_csv(f'{out_dir}{comparison}_log2_normCounts.txt', header=True, index=True, sep="\t")
 
     # blind rlog count matrix for all samples.
     colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A'] * exp.sample_number})
@@ -1784,20 +1778,16 @@ def Principal_Component_Analysis(exp):
 
     design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
     for comparison, design in design_gen:
-        if exp.norm == 'median-ratios':
-            count_type = f'{comparison}_rlog_counts'
-        else:
-            count_type = f'{comparison}_log2_normCounts'
 
         output(f'Starting DESeq2 PCA analysis for {comparison}: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
-        plot_PCA(counts=exp.de_results[count_type],
+        plot_PCA(counts=exp.de_results[f'{comparison}_log2_normCounts'],
                  colData=design['colData'],
                  out_dir=f'{out_dir}{comparison}/',
                  test_condition=f'{design["Test_condition"][-1]}',
                  name=comparison
                  )
 
-        plot_exp(data=exp.de_results[count_type],
+        plot_exp(data=exp.de_results[f'{comparison}_log2_normCounts'],
                  plot_dir=f'{out_dir}{comparison}/',
                  ylabel='Normalized log$_2$',
                  name=comparison,
@@ -2051,7 +2041,7 @@ def clustermap(exp):
         out_dir = f'{heat_dir}{comparison}/'
         os.makedirs(out_dir, exist_ok=True)
 
-        rlog = exp.de_results[f'{comparison}_rlog_counts']
+        rlog = exp.de_results[f'{comparison}_log2_normCounts']
         rlog['gene_name'] = [name.split("_")[1] for name in rlog.index.tolist()]
 
         sig = set(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])

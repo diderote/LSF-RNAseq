@@ -68,6 +68,8 @@ All submission scripts, error and output files are saved.
 3. After installation type the following commands:
 
 > module rm python
+> conda config --prepend channels conda-forge
+> conda config --prepend channels bioconda
 > conda env create -f /projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml
 
  - If this throws errors, check that miniconda is installed in $HOME/miniconda3/ or change the bottom line of the environment.yml file to match your conda installation.  If there is a package error, try removing the version of that package from the .yml file and trying again.
