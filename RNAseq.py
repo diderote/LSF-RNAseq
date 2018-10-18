@@ -1143,6 +1143,7 @@ def plot_PCA(counts, colData, out_dir, name, test_condition):
         if len(colData) != 0:
             ax.legend(handles=[blue_patch, red_patch], loc=1)
 
+        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
         sns.despine()
         plt.tight_layout()
         plt.subplots_adjust(right=0.8, top=.8)
