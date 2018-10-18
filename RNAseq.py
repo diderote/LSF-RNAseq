@@ -9,18 +9,12 @@ www.github.com/diderote/Nimerlab-RNAseq/
 
 To do:
     - change designs to allow for non-bindary conditions ('Condition_A: a,a,b,b,c,c')
-    - ICA with chi-square with de groups (start as year random)
     - add sleuth for mouse and make compatable with new v.7 strategy
     - optimize STAR
-    - add summary statistics at finish
-        -fragment length
-        -mapping ..etc
     - fine tune DE tests for lfcshrink or GC norm option per test
     - if restarting with papermill... make different ipynb
-    - add rlog with design (one blind, other full design)
-    - tsne with several perplexities?
+    - add rlog with full design
     - add single cell (deseq2, min to replace=Inf, other sc options zeroinflation?, LRT)
-    - extract log2 instead of rlog with RUVg normcounts or EDAseq normcounts.  ?
 
 '''
 import os
@@ -495,7 +489,7 @@ def fastqc(exp):
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
-                        f'fastqc {exp.fastq_folder}{exp.fastq_folder} *'
+                        f'fastqc {exp.fastq_folder}{exp.fastq_folder}*'
                         ]
 
         exp.job_id.append(send_job(command_list=command_list,
