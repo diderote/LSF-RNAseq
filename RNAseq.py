@@ -42,7 +42,7 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
 from scipy import stats
 import gseapy
-# import PyPDF2
+import PyPDF2
 
 __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
@@ -1132,7 +1132,7 @@ def plot_PCA(counts, colData, out_dir, name, test_condition):
         for i, sample in enumerate(bpca_df['name'].tolist()):
             xy = (bpca_df.iloc[i, 0], bpca_df.iloc[i, 1])
             xytext = tuple([sum(x) for x in zip(xy, ((sum(abs(ax.xaxis.get_data_interval())) * .01), (sum(abs(ax.yaxis.get_data_interval())) * .01)))])
-            ax.annotate(sample, xy=xy, xytext=xytext)
+            ax.annotate(sample.replace('_', ' '), xy=xy, xytext=xytext)
 
         if len(colData) != 0:
             ax.legend(handles=[blue_patch, red_patch], loc=1)
@@ -2018,6 +2018,7 @@ def sigs(exp):
             with open(f'{sig_out}{sig}.txt', 'w') as file:
                 for gene in genes:
                     file.write(f'{gene}\n')
+            output(f'{comparison} {sig} has {len(genes)}.', exp.log_file)
 
     output(f'Signature and Volcano Plot generation complete: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
     exp.tasks_complete.append('Sigs')
@@ -2530,21 +2531,19 @@ def final_qc(exp):
                      log_file=log_file
                      )
 
-            '''
             fragment_series = pd.Series()
             for sample in samples:
-                modelfile = '{}/QC/{}.models.pdf'.format(exp.scratch,sample)
+                modelfile = '{}/QC/{}.models.pdf'.format(exp.scratch, sample)
                 if os.path.isfile(modelfile):
                     with open(modelfile, 'rb') as fp:
                         text = PyPDF2.PdfFileReader(fp).getPage(0).extractText()
-                        mean = float(text.split('\n')[1].split[','][1].split(' ')[-1])
-                fragment_series[sample] = mean
+                        mean_frag = float(text.split('\n')[1].split(',')[1].split(' ')[-1])
+                fragment_series[sample] = mean_frag
             plot_col(df=fragment_series,
                      title='Mean Fragment Lengths per Sample',
                      ylable='Fragment Length',
                      log_file=log_file
-                    )
-            '''
+                     )
 
         # Summary plots for FastQC data
         fastqc_file = f'{exp.scratch}/QC/multiqc_data/multiqc_fastqc.txt'
@@ -2567,6 +2566,9 @@ def final_qc(exp):
         display(HTML('<h1>Final QC Summary</h1>'))
         display(HTML(f'{exp.scratch}/multiqc_report.html'))
 
+        copytree(f'{exp.scratch}logs/colplot/', f'{exp.scratch}QC')
+        rmtree(f'{exp.scratch}logs/colplot/')
+
         exp.tasks_complete.append('MultiQC')
 
         return exp
@@ -2587,6 +2589,15 @@ def finish(exp):
 
         if os.path.isdir(f'{exp.scratch}/Fastq'):
             rmtree(f'{exp.scratch}/Fastq')
+
+        if exp.alignment_mode in ['gene', 'transcript']:
+            folder_name = 'RSEM_results/' if exp.alignment_mode == 'transcript' else 'STAR_results/'
+            for sample in exp.samples.values():
+                os.makedirs(f'{exp.scratch}{folder_name}{sample}', exist_ok=True)
+                moveFiles = glob.glob(f'{exp.scratch}RSEM_results/{sample}*')
+                moveGen = (file for file in moveFiles if file is not os.path.isdir(file))
+                for file in moveGen:
+                    move(file, f'{exp.scratch}RSEM_results/{sample}/')
 
         output(f'\nConda environment file: {exp.job_folder}{exp.name}_environmnet.yml\nPackage versions: ', exp.log_file)
 
