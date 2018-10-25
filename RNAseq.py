@@ -5,7 +5,7 @@ University of Miami - Pegasus LSF Cluster RNASeq Pipeline
 
 Reads an experimental design yaml file (Version 0.7).
 Requires a conda environment 'RNAseq' made from environment.yml
-www.github.com/diderote/Nimerlab-RNAseq/
+www.github.com/diderote/LSF-RNAseq/
 
 To do:
     - change designs to allow for non-bindary conditions ('Condition_A: a,a,b,b,c,c')
@@ -15,6 +15,8 @@ To do:
     - if restarting with papermill... make different ipynb
     - add rlog with full design
     - add single cell (deseq2, min to replace=Inf, other sc options zeroinflation?, LRT)
+    - output xlsx
+    - output TPM, FPKM and VST matrices
 
 '''
 import os
@@ -1136,8 +1138,8 @@ def plot_PCA(counts, colData, out_dir, name, test_condition):
 
         if len(colData) != 0:
             ax.legend(handles=[blue_patch, red_patch], loc=1)
+            plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
-        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
         sns.despine()
         plt.tight_layout()
         plt.subplots_adjust(right=0.8, top=.8)
@@ -2203,6 +2205,15 @@ def gsea_barplot(out_dir, pos_file, neg_file, gmt_name, max_number=20):
     return file
 
 
+def add_mouse_gene(GSEA_folder, mapping_dictionary):
+    GSEA_folder = GSEA_folder if GSEA_folder.endswith('/') else f'{GSEA_folder}/'
+    files = [file for file in glob.glob(f'{GSEA_folder}*/*/*/*.xls') if file.split('/')[-1].split('_')[0] not in ['gene', 'gsea', 'ranked']]
+    for file in files:
+        xls = pd.read_table(file, header=0)
+        xls['GENE SYMBOL'] = xls.PROBE.map(mapping_dictionary)
+        xls.to_csv(file, header=True, index=False, sep="\t")
+
+
 def GSEA(exp):
     '''
     Perform Gene Set Enrichment Analysis using gsea 3.0 from the Broad Institute.
@@ -2311,6 +2322,12 @@ def GSEA(exp):
 
             else:
                 output(f'GSEA did not complete {name} for {comparison}.', exp.log_file)
+
+    # add gene symbol to GSEA if mouse
+    if exp.genome.lower() == 'mm10':
+        with open(exp.genome_indicies['Gene_names'], 'rb') as file:
+            mapping_dictionary = pickle.load(file)
+        add_mouse_gene(out_dir, mapping_dictionary)
 
     os.chdir(cwd)
     exp.tasks_complete.append('GSEA')
