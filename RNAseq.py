@@ -15,8 +15,6 @@ To do:
     - if restarting with papermill... make different ipynb
     - add rlog with full design
     - add single cell (deseq2, min to replace=Inf, other sc options zeroinflation?, LRT)
-    - output xlsx
-    - output TPM, FPKM and VST matrices
 
 '''
 import os
@@ -45,6 +43,7 @@ from rpy2.robjects import pandas2ri
 from scipy import stats
 import gseapy
 import PyPDF2
+import papermill as pm
 
 __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
@@ -197,7 +196,8 @@ def parse_yaml(experimental_file):
     output(f'Processing data with: {exp.genome}', exp.log_file)
 
     # Tasks to complete
-    if not yml['Tasks']['Align']:
+    exp.align = yml['Tasks']['Align']
+    if not exp.align:
         exp.tasks_complete = exp.tasks_complete + ['Stage', 'FastQC', 'Fastq_screen', 'Trim', 'STAR', 'RSEM', 'Kallisto', 'Sleuth']
         output('Not performing alignment.', exp.log_file)
         count_matrix_loc = yml['Count_matrix']
@@ -207,7 +207,7 @@ def parse_yaml(experimental_file):
             exp.count_matrix = read_pd(count_matrix_loc)
         else:
             raise IOError("Count Matrix Not Found.")
-    elif yml['Tasks']['Align']:
+    elif exp.align:
         # Alignment mode. Default is transcript.
         exp.alignment_mode = 'gene' if yml['Alignment_Mode'].lower() == 'gene' else 'transcript'
         if exp.alignment_mode == 'gene':
@@ -377,10 +377,10 @@ def parse_yaml(experimental_file):
         exp.tasks_complete = exp.tasks_complete + ['Kallisto', 'Sleuth']
 
     # DE Overlaps
-    for key, item in yml['Overlaps'].items():
-        if bool(item):
-            exp.overlaps[key] = item.split(':')
-    if str(len(list(exp.overlaps.keys()))) != 0:
+    if yml['Overlaps']:
+        for key, item in yml['Overlaps'].items():
+            if bool(item):
+                exp.overlaps[key] = item.split(':')
         output(f'\nOverlapping {len(list(exp.overlaps.keys()))} differential analysis comparison(s).', exp.log_file)
         output(f'{exp.overlaps}\n', exp.log_file)
     else:
@@ -724,7 +724,7 @@ def spike(exp):
             for number, sample in exp.samples.items():
                 exp.spike_counts[sample] = pd.read_csv(f'{ERCC_folder}{sample}_ERCCReadsPerGene.out.tab', header=None, index_col=0, sep="\t")[[3]]
             exp.spike_counts = exp.spike_counts.iloc[4:, :]
-            exp.spike_counts.to_csv(f'{ERCC_folder}ERCC.count.matrix.txt', header=True, index=True, sep="\t")
+            exp.spike_counts.to_excel(f'{ERCC_folder}ERCC.count.matrix.xlsx')
 
     except:
         output('Error generating spike_count matrix.', exp.log_file)
@@ -899,7 +899,7 @@ def star(exp):
             for number, sample in exp.samples.items():
                 exp.count_matrix[sample] = read_pd(f'{out_dir}{sample}_ReadsPerGene.out.tab')[[3]]
             exp.count_matrix = exp.count_matrix.iloc[4:, :]
-            exp.count_matrix.to_csv(f'{out_dir}ALL_STAR.count.matrix.txt', header=True, index=True, sep="\t")
+            exp.count_matrix.to_excel(f'{out_dir}ALL_STAR.count.matrix.xlsx')
             if os.path.isfile(exp.genome_indicies['Gene_names']):
                 with open(exp.genome_indicies['Gene_names'], 'rb') as file:
                     gene_dict = pickle.load(file)
@@ -908,7 +908,7 @@ def star(exp):
                 exp.count_matrix['name'] = exp.count_matrix.name.apply(lambda x: f'{x}_{gene_dict[x]}')
                 exp.count_matrix.index = exp.count_matrix.name
                 exp.count_matrix = exp.count_matrix.drop(columns=['name'])
-                exp.count_matrix.to_csv(f'{out_dir}Filtered_STAR.count.matrix.txt', header=True, index=True, sep="\t")
+                exp.count_matrix.to_excel(f'{out_dir}Filtered_STAR.count.matrix.xlsx')
 
     except:
         output('Error generating count matrix.', exp.log_file)
@@ -997,36 +997,21 @@ def rsem(exp):
 
     # Generate one matrix for all expected_counts
     output(f'Generating Sample Matrix from RSEM.gene.results: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
-    matrix = 'rsem-generate-data-matrix '
-    columns = []
+    index = pd.read_table(f'{out_dir}{list(exp.samples.values())[0]}.genes.results')['gene_id']
+    expectedcount_matrix = pd.DataFrame(index=index)
+    TPM_matrix = pd.DateFrame(index=index)
+
     for number, sample in exp.samples.items():
-        matrix = f'{matrix}{out_dir}{sample}.genes.results '
-        columns.append(sample)
+        df = pd.read_table(f'{out_dir}{sample}.genes.results')
+        df.index = index
+        expectedcount_matrix[sample] = df.expected_count
+        TPM_matrix[sample] = df.TPM
+        TPM_matrix['gene_name'] = [gene.split('_')[-1] for gene in index.tolist()]
 
-    matrix = matrix + f'> {out_dir}RSEM.count.matrix.txt'
+    expectedcount_matrix.to_excel(f'{out_dir}RSEM.count.matrix.xlsx')
+    TPM_matrix.to_excel(f'{out_dir}TPM_matrix.xlsx')
 
-    command_list = ['module rm python',
-                    'source activate RNAseq',
-                    matrix
-                    ]
-
-    exp.job_id.append(send_job(command_list=command_list,
-                               job_name='Generate_Count_Matrix',
-                               job_log_folder=exp.job_folder,
-                               q='general',
-                               mem=1000,
-                               log_file=exp.log_file,
-                               project=exp.project
-                               ))
-
-    # Wait for jobs to finish
-    job_wait(exp.job_id, exp.log_file)
-
-    counts = read_pd(f'{out_dir}RSEM.count.matrix.txt')
-    counts.columns = columns
-    counts.to_csv(f'{out_dir}RSEM.count.matrix.txt', header=True, index=True, sep="\t")
-
-    exp.count_matrix = counts
+    exp.count_matrix = expectedcount_matrix
     exp.tasks_complete.append('RSEM')
     output(f'STAR alignemnt and RSEM counts complete: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
 
@@ -1117,6 +1102,7 @@ def plot_PCA(counts, colData, out_dir, name, test_condition):
         bpca_df['name'] = bpca_df.index
 
         plt.clf()
+        sns.set(context='paper', font_scale=0.8, style='white')
         fig = plt.figure(figsize=(8, 8), dpi=300)
         ax = fig.add_subplot(111)
         if len(colData) == 0:
@@ -1138,7 +1124,7 @@ def plot_PCA(counts, colData, out_dir, name, test_condition):
 
         if len(colData) != 0:
             ax.legend(handles=[blue_patch, red_patch], loc=1)
-            plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            # plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
         sns.despine()
         plt.tight_layout()
@@ -1247,7 +1233,7 @@ def RUV(RUV_data, test_type, design, reduced, colData, norm_type, log, ERCC_coun
                                                    colData=colData,
                                                    design=ro.Formula(design))
             dds_emp = deseq.DESeq(dds_emp)
-            results_emp = pandas2ri.ri2py(as_df(deseq.results(dds_emp)))
+            results_emp = pandas2ri.ri2py(as_df(deseq.results(dds_emp, contrast=as_cv([f'{design.split(" ")[-1].split("~")[-1]}', 'yes', 'no']))))
             results_emp.index = RUV_data.index
             results_emp.sort_values(by='padj', inplace=True)
             top_de = list(results_emp.head(10000).index)
@@ -1600,16 +1586,16 @@ def DESeq2(exp):
         exp.de_results[f'DE2_{comparison}'].sort_values(by='padj', ascending=True, inplace=True)
         exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].index
         exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
-        exp.de_results[f'DE2_{comparison}'].to_csv(f'{out_dir}{comparison}-DESeq2-results.txt', header=True, index=True, sep="\t")
+        exp.de_results[f'DE2_{comparison}'].to_excel(f'{out_dir}{comparison}-DESeq2-results.xlsx')
         # Shrunken LFC using apeglm or ashr method
         if exp.lfcshrink:
             exp.de_results[f'shrunkenLFC_{comparison}'].sort_values(by='log2FoldChange', ascending=False, inplace=True)
             exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].index
             exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
-            exp.de_results[f'shrunkenLFC_{comparison}'].to_csv(f'{out_dir}{comparison}-DESeq2-shrunken-LFC.txt', header=True, index=True, sep="\t")
+            exp.de_results[f'shrunkenLFC_{comparison}'].to_excel(f'{out_dir}{comparison}-DESeq2-shrunken-LFC.xlsx')
 
         # Normlized counts
-        exp.de_results[f'{comparison}_log2_normCounts'].to_csv(f'{out_dir}{comparison}_log2_normCounts.txt', header=True, index=True, sep="\t")
+        exp.de_results[f'{comparison}_log2_normCounts'].to_excel(f'{out_dir}{comparison}_log2_normCounts.xlsx')
 
     # blind rlog count matrix for all samples.
     colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A'] * exp.sample_number})
@@ -1622,7 +1608,15 @@ def DESeq2(exp):
     exp.de_results['blind_rlog'].columns = count_matrix.columns
     exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].index
     exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].gene_name.apply(lambda x: x.split("_")[1])
-    exp.de_results['blind_rlog'].to_csv(f'{out_dir}ALL-samples-blind-rlog-counts.txt', header=True, index=True, sep="\t")
+    exp.de_results['blind_rlog'].to_excel(f'{out_dir}ALL-samples-blind-rlog-counts.xlsx')
+
+    # vst
+    exp.de_results['blind_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.vst(dds_blind)))
+    exp.de_results['blind_vst'].index = count_matrix.index
+    exp.de_results['blind_vst'].columns = count_matrix.columns
+    exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].index
+    exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].gene_name.apply(lambda x: x.split("_")[1])
+    exp.de_results['blind_vst'].to_excel(f'{out_dir}ALL-samples-blind-variance-stabilized-log2-counts.xlsx')
 
     '''
     dds_complete = deseq.DESeqDataSetFromMatrix(countData=count_matrix.values,
@@ -1658,11 +1652,7 @@ def DESeq2(exp):
                                                     lfcshrink=exp.lfcshrink
                                                     )
 
-        exp.de_results['all_ERCC_normCounts'].to_csv(f'{out_dir}ALL-samples-ERCC_DE2_normCounts.txt',
-                                                     header=True,
-                                                     index=True,
-                                                     sep="\t"
-                                                     )
+        exp.de_results['all_ERCC_normCounts'].to_excel(f'{out_dir}ALL-samples-ERCC_DE2_normCounts.xlsx')
 
     output(session(), exp.log_file)
     exp.tasks_complete.append('DESeq2')
@@ -1690,7 +1680,7 @@ def plot_exp(data, plot_dir, ylabel, name, log_file=''):
     output('Starting global sample expression comparisons.', log_file)
 
     plt.clf()
-    sns.set(context='paper', font='Arial', style='white', rc={'figure.dpi': 300, 'figure.figsize': (4, 4)})
+    sns.set(context='paper', font_scale=0.8, font='Arial', style='white', rc={'figure.dpi': 300, 'figure.figsize': (4, 4)})
     pl = sns.boxplot(data=data, color='darkgrey', medianprops={'color': 'red'})
     pl.set_ylabel(f'Expression Counts\n({ylabel})')
     pl.set_title(name)
@@ -2017,7 +2007,7 @@ def sigs(exp):
         sig_out = f'{out_dir}{comparison}/'
         os.makedirs(sig_out, exist_ok=True)
         for sig, genes in sigs.items():
-            with open(f'{sig_out}{sig}.txt', 'w') as file:
+            with open(f'{sig_out}{sig}.xls', 'w') as file:
                 for gene in genes:
                     file.write(f'{gene}\n')
             output(f'{comparison} {sig} has {len(genes)}.', exp.log_file)
@@ -2419,7 +2409,7 @@ def overlaps(exp):
             output(f'Performing GO enrichment for {name} overlaps: {datetime.now()} \n', exp.log_file)
             enrichr(gene_list=list(sig), description=f'{name}_overlap', out_dir=sig_out)
 
-            with open(f'{sig_out}{name}.txt', 'w') as file:
+            with open(f'{sig_out}{name}.xls', 'w') as file:
                 for gene in list(sig):
                     file.write(f'{gene}\n')
 
@@ -2558,7 +2548,7 @@ def final_qc(exp):
                 fragment_series[sample] = mean_frag
             plot_col(df=fragment_series,
                      title='Mean Fragment Lengths per Sample',
-                     ylable='Fragment Length',
+                     ylabel='Fragment Length',
                      log_file=log_file
                      )
 
@@ -2583,8 +2573,9 @@ def final_qc(exp):
         display(HTML('<h1>Final QC Summary</h1>'))
         display(HTML(f'{exp.scratch}/multiqc_report.html'))
 
-        copytree(f'{exp.scratch}logs/colplot/', f'{exp.scratch}QC')
-        rmtree(f'{exp.scratch}logs/colplot/')
+        if os.path.isdir(f'{exp.scratch}logs/colplot/'):
+            copytree(f'{exp.scratch}logs/colplot/', f'{exp.scratch}QC/colplot/')
+            rmtree(f'{exp.scratch}logs/colplot/')
 
         exp.tasks_complete.append('MultiQC')
 
@@ -2607,7 +2598,7 @@ def finish(exp):
         if os.path.isdir(f'{exp.scratch}/Fastq'):
             rmtree(f'{exp.scratch}/Fastq')
 
-        if exp.alignment_mode in ['gene', 'transcript']:
+        if exp.align:
             folder_name = 'RSEM_results/' if exp.alignment_mode == 'transcript' else 'STAR_results/'
             for sample in exp.samples.values():
                 os.makedirs(f'{exp.scratch}{folder_name}{sample}', exist_ok=True)
@@ -2699,6 +2690,18 @@ if run_main:
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
+    parser.add_argument('--notebook', '-n', dest='notebook', help='run as jupyter notebook', action='store_true')
+    parser.add_argument('--no-notebook', dest='notebook', help='run as python script', action='store_false')
+    parser.add_argument('--template_notebook', '-t', required=False, help='location of template notebook', type=str)
+    parser.add_argument('--out_notebook', '-o', required=False, help='name of output notebook', type=str)
+    parser.set_defaults(notebook=True)
     args = parser.parse_args()
 
-    pipeline(args.experimental_file)
+    if args.notebook:
+        if (os.path.isfile(args.template_notebook) is False) or (args.template_notebook is False):
+            raise IOError(f'Location of template notebook not found. Use -t option.')
+        else:
+            out_notebook = args.out_notebook if args.out_notebook else args.experimental_file.replace('yml', 'ipynb')
+            pm.execute_notebook(args.template_notebook, out_notebook, parameters=dict(yaml_file=args.experimental_file))
+    else:
+        pipeline(args.experimental_file)

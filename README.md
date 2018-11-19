@@ -23,7 +23,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 17. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.
 
 Option Details:
-* Restart: (yes/no) Whether to check for an incomplete pipeline and pickup where left off, or restart from scratch.
+* Restart: (yes/no) Whether to restart from the beginninng or check for an incomplete pipeline and pickup from last completed step.
 * ERCC_spike: align reads to spike index using STAR.
 * Stranded: (yes/no) Will generate two stranded signal bigwig files if stranded.  Otherwise, will generate one per sample.
 * Sequencer: Nextseq or Hiseq
@@ -53,7 +53,7 @@ Lab options if running outside of Nimer Lab access:
 * Project: project for job submission
 * GSEA_jar: Specify location of GSEA.jar (tested with GSEA-3.0.jar)
 * GSEA_mouse_gmts: Path to folder containing gmts using mouse ensembl gene IDs instead of human gene names. These can be found in the optional file folder.
-* Gene_names: optional. provide path to a pickled dictionary to add an attribute such as 'gene_name' to the count_matrix.  Useful for STAR alinging where gene_id is default.  
+* Gene_names: optional. provide path to a pickled dictionary to add an attribute such as 'gene_name' to the count_matrix.  Useful for STAR alinging where gene_id is default, or converging mouse GSEA gene ids to gene name.  
 
 The pipeline handles multiple entry/exit points and can parse complex experimental designs and compensation types for DE.  In case of error, the pipeline restarts from the last completed step. Progress is tracked in a .log file in the output directory.
 
@@ -72,7 +72,7 @@ All submission scripts, error and output files are saved.
 > conda config --prepend channels bioconda
 > conda env create -f /projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml
 
- - If this throws errors, check that miniconda is installed in $HOME/miniconda3/ or change the bottom line of the environment.yml file to match your conda installation.  If there is a package error, try removing the version of that package from the .yml file and trying again.
+ - If there is a package error, try removing the version of that package the threw the error from the .yml file and try again.
 
 4. OPTIONAL SETUP:
 	- For use of contamination screen (fastq screen):
@@ -81,27 +81,22 @@ All submission scripts, error and output files are saved.
 		- cp fastq_screen.conf ~/miniconda3/envs/RNAseq/share/fastq-screen-0.11.3-0/
 	- Files for mm10 and hg38 GC Content by gene is found in the options_files folder.  Requires ENSEMBL format annotation if used.
 	- ERCC mix file provided in options_files folder.  If using a different control set, mimic this format for use.
-5. Copy '/projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/RNAseq_experiment_file.yml' into your run folder.
-6. Rename your experiment file as needed and edit the file to fit your experiment using a text editor (ie. textEdit).
+5. Copy 'RNAseq_experiment_file.yml' into a new folder.
+6. Rename your experiment file as needed and edit the file to fit your experiment using a text editor (ie. textEdit).  
 
-### There are two methods for running this pipeline - from file or through a jupyter notebook.  
+#### Run the pipeline:
 
-#### From File:
-
-7. Copy 'RNAseq.py' into your run folder.
-8. From your run folder, run analysis with this command replacing 'RNAseq_expiermental_file.yml' with your experimental filename:
+7. To run an experimental analysis use the following command, replacing anything in << >> with the approprite file names:
 	
-> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;./RNAseq.py -f RNAseq_experimental_file.yml' 
+> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o <<RNAseq>>.out -e <<RNAseq>>.err -P <<project>> <<< 'module rm python share-rpms65;source activate RNAseq;<<./path/to/RNAseq.py>> -f <<RNAseq_experimental_file>>.yml -t <</path/to/RNAseq.ipynb>>'
 
-9. In case of error, use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.
+Extra options: 
+- Add '-o' to name your output notebook something other than your experimental file name.
+- Add --no-notebook to run as a python script with a log file output.
 
-#### As Jupyter Notebook:
+9. In case of error, use the above command to pick up from last completed step if the restart option is 'no' in the experimetnal file.  In notebook mode, restarting from the last completed step will erase all priovous outputs to the notebook and start from the last step.  To avoid this, rename the output notebook.   
 
-7. From your run folder, run analysis with the following command.  Replace anything in <...> as needed, including the locations of the file:
-
-> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o RNAseq.out -e RNAseq.err -P <project> <<< 'module rm python share-rpms65;source activate RNAseq;papermill </path/to/RNAseq.ipynb> </desired/path/to/output/RNAseq.ipynb> -p yaml_file <RNAseq_experimental_file.yml>' 
-
-8. In case of error, change the output RNAseq.ipynb name and use the above command to pick up from last completed step.  Until the pipeline is complete, all files are stored and can be accessed in the scratch folder.  Output can be openend with nteract and saved to pdf or in any juptyer lab or jupyter notebook session.
+Jupyter notebooks can be visualized with nteract if you are not familiar with jupyter notebooks.
 
 ### RNAseq.py can be imported to python as a module with the following attributes:
 	
