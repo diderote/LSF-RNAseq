@@ -876,16 +876,19 @@ def star(exp):
 
     for sample in exp.samples.values():
 
-        output(f'Generating bigwig singal file for {sample}.\n', exp.log_file)
+        sample_bw = glob.glob(f'{out_dir}{sample}.star*.bw')
+        if len(sample_bw) > 0:
 
-        exp.job_id.append(bam2bw(in_bam=f'{out_dir}{sample}_Aligned.sortedByCoord.out.bam',
-                                 out_bw=f'{out_dir}{sample}.star.',
-                                 job_log_folder=exp.job_folder,
-                                 sample=sample,
-                                 project=exp.project,
-                                 log_file=exp.log_file,
-                                 stranded=exp.stranded
-                                 ))
+            output(f'Generating bigwig singal file for {sample}.\n', exp.log_file)
+
+            exp.job_id.append(bam2bw(in_bam=f'{out_dir}{sample}_Aligned.sortedByCoord.out.bam',
+                                     out_bw=f'{out_dir}{sample}.star',
+                                     job_log_folder=exp.job_folder,
+                                     sample=sample,
+                                     project=exp.project,
+                                     log_file=exp.log_file,
+                                     stranded=exp.stranded
+                                     ))
 
     # Generate one matrix for all counts
     try:
@@ -975,17 +978,20 @@ def rsem(exp):
 
     for sample in exp.samples.values():
 
-        output(f'Generating bigwig singal file for {sample}.\n', exp.log_file)
+        sample_bw = glob.glob(f'{out_dir}{sample}.rsem*.bw')
+        if len(sample_bw) > 0:
 
-        exp.job_id.append(bam2bw(in_bam=f'{out_dir}{sample}.genome.sorted.bam',
-                                 out_bw=f'{out_dir}{sample}.rsem.bw',
-                                 job_log_folder=exp.job_folder,
-                                 sample=sample,
-                                 project=exp.project,
-                                 log_file=exp.log_file,
-                                 stranded=exp.stranded))
+            output(f'Generating bigwig singal file for {sample}.\n', exp.log_file)
 
-    remove_files = ['genome.bam', 'transcript.bam', 'transcript.sorted.bam', 'transcrpt.sorted.bam.bai', 'wig']
+            exp.job_id.append(bam2bw(in_bam=f'{out_dir}{sample}.genome.sorted.bam',
+                                     out_bw=f'{out_dir}{sample}.rsem',
+                                     job_log_folder=exp.job_folder,
+                                     sample=sample,
+                                     project=exp.project,
+                                     log_file=exp.log_file,
+                                     stranded=exp.stranded))
+
+    remove_files = ['genome.bam', 'transcript.bam', 'wig']
     for number, sample in exp.samples.items():
         for file in remove_files:
             del_file = f'{out_dir}{sample}.{file}'
@@ -999,7 +1005,7 @@ def rsem(exp):
     output(f'Generating Sample Matrix from RSEM.gene.results: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
     index = pd.read_table(f'{out_dir}{list(exp.samples.values())[0]}.genes.results')['gene_id']
     expectedcount_matrix = pd.DataFrame(index=index)
-    TPM_matrix = pd.DateFrame(index=index)
+    TPM_matrix = pd.DataFrame(index=index)
 
     for number, sample in exp.samples.items():
         df = pd.read_table(f'{out_dir}{sample}.genes.results')
@@ -2693,7 +2699,7 @@ if run_main:
     parser.add_argument('--notebook', '-n', dest='notebook', help='run as jupyter notebook', action='store_true')
     parser.add_argument('--no-notebook', dest='notebook', help='run as python script', action='store_false')
     parser.add_argument('--template_notebook', '-t', required=False, help='location of template notebook', type=str)
-    parser.add_argument('--out_notebook', '-o', required=False, help='name of output notebook', type=str)
+    parser.add_argument('--out_notebook', '-o', required=False, help='name of output notebook (without .ipynb)', type=str)
     parser.set_defaults(notebook=True)
     args = parser.parse_args()
 
@@ -2701,7 +2707,7 @@ if run_main:
         if (os.path.isfile(args.template_notebook) is False) or (args.template_notebook is False):
             raise IOError(f'Location of template notebook not found. Use -t option.')
         else:
-            out_notebook = args.out_notebook if args.out_notebook else args.experimental_file.replace('yml', 'ipynb')
+            out_notebook = f'{args.out_notebook}.ipynb' if args.out_notebook else args.experimental_file.replace('yml', 'ipynb')
             pm.execute_notebook(args.template_notebook, out_notebook, parameters=dict(yaml_file=args.experimental_file))
     else:
         pipeline(args.experimental_file)
