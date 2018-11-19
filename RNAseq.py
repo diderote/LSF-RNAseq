@@ -979,7 +979,7 @@ def rsem(exp):
     for sample in exp.samples.values():
 
         sample_bw = glob.glob(f'{out_dir}{sample}.rsem*.bw')
-        if len(sample_bw) > 0:
+        if len(sample_bw) == 0:
 
             output(f'Generating bigwig singal file for {sample}.\n', exp.log_file)
 
