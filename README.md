@@ -67,10 +67,10 @@ All submission scripts, error and output files are saved.
 2. Install miniconda: 'bash ~/Miniconda3-latest-Linux-x86_64.sh'
 3. After installation type the following commands:
 
-> module rm python
-> conda config --prepend channels conda-forge
-> conda config --prepend channels bioconda
-> conda env create -f /projects/ctsi/nimerlab/DANIEL/tools/nimerlab-pipelines/RNAseq/environment.yml
+- If in pegasus:
+> module rm python share-rpms65
+- To create the environment:
+> conda env create -f /path/to/environment.yml
 
  - If there is a package error, try removing the version of that package the threw the error from the .yml file and try again.
 

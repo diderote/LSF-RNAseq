@@ -1164,17 +1164,21 @@ def GC_normalization(exp):
     GC_content = read_pd(exp.genome_indicies['GC_Content'])
     raw_counts = exp.count_matrix
     raw_counts['id'] = raw_counts.index
-    raw_counts['id'] = raw_counts.id.apply(lambda x: x.split("_")[0].split(".")[0])
-    GC_genes = set(GC_content.split.tolist())
+    raw_counts.index = raw_counts.id.apply(lambda x: x.split("_")[0].split(".")[0])
 
     # Keep only counts with GC data (based on latest ensembl biomart).  see EDAseq package and use 'biomart' after dropping ensembl name version.
-    GC_counts = round(raw_counts[raw_counts.id.apply(lambda x: x in GC_genes)])
-    GC_gene_set = set(GC_counts.id.tolist())
-    GC_content = GC_content[GC_content.split.apply(lambda x: x in GC_gene_set)]
+    GC_genes = set(GC_content['split'].tolist())
+    Count_gene_set = set(raw_counts.index.tolist())
+    common = list(GC_genes & Count_gene_set)
+
+    GC_content.index = GC_content['split']
+    GC_content = GC_content.loc[common]
+    GC_counts = round(raw_counts.loc[common])
+
     EDA_set = edaseq.newSeqExpressionSet(counts=GC_counts.drop(columns='id').values, featureData=GC_content)
     gcNorm = edaseq.withinLaneNormalization(EDA_set, 'gc', 'loess')
     data_norm = ro.pandas2ri.ri2py(as_df(normCounts(gcNorm)))
-    data_norm.index = GC_counts.index
+    data_norm.index = GC_counts['id']
     data_norm.columns = GC_counts.drop(columns='id').columns
     exp.gc_count_matrix = data_norm
 
