@@ -80,7 +80,7 @@ class Experiment:
 
 
 def html_header():
-    return ''.join(['<h1>RNAseq Analysis Notebook</h1>',
+    return ''.join(['<h1>ChIPseq Analysis Notebook</h1>',
                     f'<body><b>Experiment Date: {datetime.now():%Y-%m-%d}<br>',
                     f'Pipeline version: {__version__}</b><br>',
                     '<a href="http://www.github.com/diderote/LSF-RNAseq">Pipeline Code</a><br>',
@@ -406,21 +406,21 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     os.makedirs(job_log_folder, exist_ok=True)
 
     rand_id = str(random.randint(0, 100000))
-    str_comd_list = '\n'.join(command_list)
-    cmd = f'''
-#!/bin/bash
 
-#BSUB -J JOB_{job_name}_ID_{rand_id}
-#BSUB -R "rusage[mem={mem}]"
-#BSUB -R "span[ptile={cores}]"
-#BSUB -o {job_log_folder}{job_name}_logs_{rand_id}.stdout.%J
-#BSUB -e {job_log_folder}{job_name}_logs_{rand_id}.stderr.%J
-#BSUB -W 120:00
-#BSUB -n {cores}
-#BSUB -q {q}
-#BSUB -P {project}
-
-{str_comd_list}'''
+    cmd = '''\n'''.join(['#!/bin/bash',
+                         '',
+                         f'#BSUB -J ID_{rand_id}_JOB_{job_name}',
+                         f'#BSUB -R "rusage[mem={mem}]"',
+                         f'#BSUB -R "span[ptile={cores}]"',
+                         f'#BSUB -o {job_log_folder}{job_name}_logs_{rand_id}.stdout.%J',
+                         f'#BSUB -e {job_log_folder}{job_name}_logs_{rand_id}.stderr.%J',
+                         '#BSUB -W 120:00',
+                         f'#BSUB -n {cores}',
+                         f'#BSUB -q {q}',
+                         f'#BSUB -P {project}',
+                         '',
+                         '\n'.join(command_list)
+                         ])
 
     job_path_name = f'{job_log_folder}{job_name}.sh'
     with open(job_path_name, 'w') as file:
