@@ -20,7 +20,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 14. Heatmap of significantly differentially expressed genes using regularized log2 expresion counts.
 15. GO and KEGG enrichment of DE genes
 16. GSEA using ranked gene lists from DESeq2
-17. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.
+17. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.  p-value of the overlap is determined using a hypergeometric test with all expressed genes in the the comparison samples as background.
 
 Option Details:
 * Restart: (yes/no) Whether to restart from the beginninng or check for an incomplete pipeline and pickup from last completed step.
@@ -74,11 +74,13 @@ All submission scripts, error and output files are saved.
 
  - If there is a package error, try removing the version of that package the threw the error from the .yml file and try again.
 
-4. OPTIONAL SETUP:
+4. ADDITIONAL SETUP:
 	- For use of contamination screen (fastq screen):
 		- generate the relevant bowtie2 indices and add the path were indicated in options_files/fastq_screen.conf. (many premade by illumina at https://support.illumina.com/sequencing/sequencing_software/igenome.html)
 		- unhash relvant lines before each desired DATABASE
 		- cp fastq_screen.conf ~/miniconda3/envs/RNAseq/share/fastq-screen-0.11.3-0/
+	- Download GSEA.jar (> 3.0) from http://www.gsea-msigdb.org/gsea/index.jsp.
+		- With mm10, the genes have to be converted to mouse IDs.  Provided in the option_files is a folder of preconverted IDs, with a file 'gencode_gene_dict.pkl' to convert the IDs back to mouse gene names.
 	- Files for mm10 and hg38 GC Content by gene is found in the options_files folder.  Requires ENSEMBL format annotation if used.
 	- ERCC mix file provided in options_files folder.  If using a different control set, mimic this format for use.
 5. Copy 'RNAseq_experiment_file.yml' into a new folder.
@@ -86,7 +88,11 @@ All submission scripts, error and output files are saved.
 
 #### Run the pipeline:
 
-7. To run an experimental analysis use the following command, replacing anything in << >> with the approprite file names:
+7. To run the pipeline, modify the RNAseq_bsub.sh included in the folder and run:
+
+> bsub < RNAseq_bsub.sh
+
+8. Alternatively, use the following code directly in the LSF login-node, replacing anything in << >> with the approprite file names:
 	
 > bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o <<RNAseq>>.out -e <<RNAseq>>.err -P <<project>> <<< 'module rm python share-rpms65;source activate RNAseq;<<./path/to/RNAseq.py>> -f <<RNAseq_experimental_file>>.yml -t <</path/to/RNAseq.ipynb>>'
 
@@ -96,7 +102,7 @@ Extra options:
 
 9. In case of error, use the above command to pick up from last completed step if the restart option is 'no' in the experimetnal file.  In notebook mode, restarting from the last completed step will erase all priovous outputs to the notebook and start from the last step.  To avoid this, rename the output notebook.   
 
-Jupyter notebooks can be visualized with nteract if you are not familiar with jupyter notebooks.
+Jupyter notebooks can be visualized with nteract (https://nteract.io) if you are not familiar with jupyter notebooks.
 
 ### RNAseq.py can be imported to python as a module with the following attributes:
 	
