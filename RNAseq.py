@@ -2336,10 +2336,11 @@ def GSEA(exp):
     return exp
 
 
-def plot_venn2(Series, string_name_of_overlap, folder):
+def plot_venn2(Series, overlap_name, folder, background=None):
     '''
     Series with with overlaps 10,01,11
     Plots a 2 way venn.
+    If background is an integer, pvalue will be generated using hypergeometric test of overlap.
     Saves to file.
     '''
 
@@ -2370,11 +2371,15 @@ def plot_venn2(Series, string_name_of_overlap, folder):
         circle.set_alpha(0.8)
         circle.set_linewidth(3)
 
-    plt.title(f'{string_name_of_overlap.replace("_", " ")} Overlaps')
+    if background:
+        pvalue = stats.hypergeom.sf(Series.iloc[2], background, Series.iloc[0], Series.iloc[1])
+        plt.text(0, 0, f'p-value = {pvalue:.03g}', fontsize=10)
+
+    plt.title(f'{overlap_name.replace("_", " ")} Overlaps')
     plt.tight_layout()
-    plt.savefig(f'{folder}{string_name_of_overlap}-overlap-{datetime.now():%Y-%m-%d}.svg')
-    plt.savefig(f'{folder}{string_name_of_overlap}-overlap-{datetime.now():%Y-%m-%d}.png', dpi=300)
-    out_result(f'{folder}{string_name_of_overlap}-overlap-{datetime.now():%Y-%m-%d}.png', f'Overlap Venn: {string_name_of_overlap.replace("_", " ")}')
+    plt.savefig(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.svg')
+    plt.savefig(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.png', dpi=300)
+    out_result(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.png', f'Overlap Venn: {overlap_name.replace("_", " ")}')
     if run_main:
         plt.close()
 
@@ -2407,7 +2412,13 @@ def overlaps(exp):
                                           ],
                                          index=comparison_list + ['Overlap']
                                          )
-                        plot_venn2(venn, key, f'{out_dir}{overlap}_{name}/')
+                        expressed1 = pd.read_table(f'{exp.scratch}/DESeq2_GSEA/{comparison_list[0]}/{comparison_list[0]}_stat.rnk', header=None)
+                        expressed2 = pd.read_table(f'{exp.scratch}/DESeq2_GSEA/{comparison_list[1]}/{comparison_list[1]}_stat.rnk', header=None)
+                        expressed1_set = set([gene.split('-')[0] for gene in expressed1[0].tolist() if gene[:4] != 'ERCC'])
+                        expressed2_set = set([gene.split('-')[0] for gene in expressed2[0].tolist() if gene[:4] != 'ERCC'])
+                        background = len(expressed1_set | expressed2_set)
+
+                        plot_venn2(venn, key, f'{out_dir}{overlap}_{name}/', background=background)
 
     for name, sig in exp.overlap_results.items():
         sig_out = f'{out_dir}{name}_GEA/'
