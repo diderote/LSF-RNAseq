@@ -768,8 +768,7 @@ def spike(exp):
         sns.despine()
         M1.savefig(f'{ERCC_folder}ERCC_Mix_1_plot.png')
         out_result(f'{ERCC_folder}ERCC_Mix_1_plot.png', 'ERCC Mix1 Plot')
-        if run_main:
-            plt.close()
+        plt.close()
 
         plt.clf()
         sns.set(context='paper', font_scale=2, style='white', rc={'figure.dpi': 300, 'figure.figsize': (6, 6)})
@@ -780,8 +779,7 @@ def spike(exp):
         sns.despine()
         M2.savefig(f'{ERCC_folder}ERCC_Mix_2_plot.png')
         out_result(f'{ERCC_folder}ERCC_Mix_2_plot.png', 'ERCC Mix2 Plot')
-        if run_main:
-            plt.close()
+        plt.close()
 
         plt.clf()
         sns.set(context='paper', font_scale=2, style='white', rc={'figure.dpi': 300, 'figure.figsize': (6, 6)})
@@ -792,8 +790,7 @@ def spike(exp):
         sns.despine()
         setB.savefig(f'{ERCC_folder}ERCC_Subgroup_B_plot.png')
         out_result(f'{ERCC_folder}ERCC_Subgroup_B_plot.png', 'ERCC Mix1-Mix2 Common (Group B) Plot')
-        if run_main:
-            plt.close()
+        plt.close()
 
     output(f"ERCC spike-in processing complete: {datetime.now():%Y-%m-%d %H:%M:%S}\n", exp.log_file)
 
@@ -1946,8 +1943,7 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     plt.savefig(f'{out_dir}/{name}-Volcano-Plot.png', dpi=200)
     plt.savefig(f'{out_dir}/{name}-Volcano-Plot.svg', dpi=200)
     out_result(f'{out_dir}/{name}-Volcano-Plot.png', f'Volcano Plot: {name}')
-    if run_main:
-        plt.close()
+    plt.close()
 
     return
 
@@ -2051,8 +2047,7 @@ def clustermap(exp):
             CM.savefig(f'{out_dir}{comparison}_2FC_Heatmap.png', dpi=300)
             CM.savefig(f'{out_dir}{comparison}_2FC_Heatmap.svg', dpi=300)
             out_result(f'{out_dir}{comparison}_2FC_Heatmap.png', f'Heatmap (2FC): {comparison}')
-            if run_main:
-                plt.close()
+            plt.close()
 
         sig15 = set(exp.sig_lists[comparison]['15FC_UP'] | exp.sig_lists[comparison]['15FC_DN'])
         if len(sig15) < 2:
@@ -2063,8 +2058,7 @@ def clustermap(exp):
             CM15.savefig(f'{out_dir}{comparison}_1.5FC_Heatmap.png', dpi=300)
             CM15.savefig(f'{out_dir}{comparison}_1.5FC_Heatmap.svg', dpi=300)
             out_result(f'{out_dir}{comparison}_1.5FC_Heatmap.png', f'Heatmap (1.5 FC): {comparison}')
-            if run_main:
-                plt.close()
+            plt.close()
 
         sigAll = set(exp.sig_lists[comparison]['All_UP'] | exp.sig_lists[comparison]['All_DN'])
         if len(sigAll) < 2:
@@ -2075,8 +2069,7 @@ def clustermap(exp):
             CM15.savefig(f'{out_dir}{comparison}_noFCfilter_Heatmap.png', dpi=300)
             CM15.savefig(f'{out_dir}{comparison}_noFCfilter_Heatmap.svg', dpi=300)
             out_result(f'{out_dir}{comparison}_noFCfilter_Heatmap.png', f'Heatmap (no filter): {comparison}')
-            if run_main:
-                plt.close()
+            plt.close()
 
     exp.tasks_complete.append('Heatmaps')
     output('Heatmaps for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
@@ -2088,20 +2081,12 @@ def enrichr(gene_list, description, out_dir):
     '''
     Perform GO enrichment and KEGG enrichment Analysis using Enrichr: http://amp.pharm.mssm.edu/Enrichr/
     '''
-    gene_sets = 'KEGG_2016'
-    gseapy.enrichr(gene_list=gene_list, description=description, gene_sets='KEGG_2016', outdir=out_dir)
 
-    out_result(f'{out_dir}{gene_sets}.{description}.enrichr.reports.png', f'Enrichr: {gene_sets} for {description}')
+    gene_sets = ['KEGG_2016', 'GO_Biological_Process_2017b', 'OMIM_Disease', 'ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X']
 
-    gene_sets = 'GO_Biological_Process_2017b'
-    gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_sets, outdir=out_dir)
-
-    out_result(f'{out_dir}{gene_sets}.{description}.enrichr.reports.png', f'Enrichr: {gene_sets} for {description}')
-
-    gene_sets = 'GO_Molecular_Function_2017b'
-    gseapy.enrichr(gene_list=gene_list, description=description, gene_sets='GO_Molecular_Function_2017b', outdir=out_dir)
-
-    out_result(f'{out_dir}{gene_sets}.{description}.enrichr.reports.png', f'Enrichr: {gene_sets} for {description}')
+    for gene_set in gene_sets:
+        gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
+        out_result(f'{out_dir}{gene_set}.{description}.enrichr.reports.png', f'Enrichr: {gene_set} for {description}')
 
     return
 
@@ -2110,7 +2095,7 @@ def GO_enrich(exp):
     '''
     Perform GO enrichment analysis on significanttly differentially expressed genes.
     '''
-    GO_dir = f'{exp.scratch}GO_enrichment/'
+    GO_dir = f'{exp.scratch}Enrichr/'
     os.makedirs(GO_dir, exist_ok=True)
 
     design_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
@@ -2193,8 +2178,7 @@ def gsea_barplot(out_dir, pos_file, neg_file, gmt_name, max_number=20):
     file = f'{out_dir}{gmt_name}_GSEA_NES_plot.png'
     fig.savefig(file, dpi=300)
     out_result(file, f'GSEA Normalized Enrichment Plot: {gmt_name}')
-    if run_main:
-        plt.close()
+    plt.close()
 
     pos_png = glob.glob(f'{out_dir}*/enplot*{top_pos}*.png')
     out_result(pos_png[0], f'Top positive {gmt_name} GSEA')
@@ -2380,8 +2364,7 @@ def plot_venn2(Series, overlap_name, folder, background=None):
     plt.savefig(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.svg')
     plt.savefig(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.png', dpi=300)
     out_result(f'{folder}{overlap_name}-overlap-{datetime.now():%Y-%m-%d}.png', f'Overlap Venn: {overlap_name.replace("_", " ")}')
-    if run_main:
-        plt.close()
+    plt.close()
 
 
 def overlaps(exp):
@@ -2513,8 +2496,7 @@ def plot_col(df, title, ylabel, out='', xy=(None, None), xticks=[''], plot_type=
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.17, top=0.9)
     plt.savefig(f'{out}{title.replace(" ", "_")}.png', dpi=300)
-    if run_main:
-        plt.close()
+    plt.close()
 
     out_result(f'{out}{title.replace(" ", "_")}.png', f'{title} Plot')
     output(f'{title.replace(" ", "_")}.png found in {out}', log_file)
