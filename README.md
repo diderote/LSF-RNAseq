@@ -90,7 +90,7 @@ All submission scripts, error and output files are saved.
 
 7. To run the pipeline, use the following code directly in the LSF login-node:
 
-> source activate RNAseq
+> source acttivate RNAseq
 > python /path/to/RNAseq.py -f /path/to/RNAseq_experimental_file.yml -s -p your_lsf_project
 
 Extra options: 
