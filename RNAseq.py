@@ -492,7 +492,7 @@ def fastqc(exp):
         command_list = ['module rm python',
                         'module rm perl',
                         'source activate RNAseq',
-                        f'fastqc {exp.fastq_folder}{exp.fastq_folder}*'
+                        f'fastqc {exp.fastq_folder}{sample}*'
                         ]
 
         exp.job_id.append(send_job(command_list=command_list,
