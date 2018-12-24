@@ -22,7 +22,7 @@ This pipline handles processing and analyses for RNAseq data on the University o
 16. GSEA using ranked gene lists from DESeq2
 17. Overlap of differentially expressed genes from different tests with scaled venn-diagram and GO/KEGG enrichment of overlaps.  p-value of the overlap is determined using a hypergeometric test with all expressed genes in the the comparison samples as background.
 
-Option Details:
+## Option Details:
 * Restart: (yes/no) Whether to restart from the beginninng or check for an incomplete pipeline and pickup from last completed step.
 * ERCC_spike: align reads to spike index using STAR.
 * Stranded: (yes/no) Will generate two stranded signal bigwig files if stranded.  Otherwise, will generate one per sample.
@@ -59,9 +59,9 @@ The pipeline handles multiple entry/exit points and can parse complex experiment
 
 All submission scripts, error and output files are saved.
 
-## Instructions for installation and use:
+# Instructions for installation and use:
 
-### This pipeline is compatable with UM Pegasus.
+## This pipeline is compatable with UM Pegasus.
 
 1. Download https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh to your nethome folder.
 2. Install miniconda: 'bash ~/Miniconda3-latest-Linux-x86_64.sh'
@@ -75,7 +75,7 @@ All submission scripts, error and output files are saved.
  - If there is a package error, try removing the version of that package the threw the error from the .yml file and try again.
 
 4. ADDITIONAL SETUP:
-	- For use of contamination screen (fastq screen):
+	- For use of the contamination screen (fastq screen):
 		- generate the relevant bowtie2 indices and add the path were indicated in options_files/fastq_screen.conf. (many premade by illumina at https://support.illumina.com/sequencing/sequencing_software/igenome.html)
 		- unhash relvant lines before each desired DATABASE
 		- cp fastq_screen.conf ~/miniconda3/envs/RNAseq/share/fastq-screen-0.11.3-0/
@@ -83,28 +83,31 @@ All submission scripts, error and output files are saved.
 		- With mm10, the genes have to be converted to mouse IDs.  Provided in the option_files is a folder of preconverted IDs, with a file 'gencode_gene_dict.pkl' to convert the IDs back to mouse gene names.
 	- Files for mm10 and hg38 GC Content by gene is found in the options_files folder.  Requires ENSEMBL format annotation if used.
 	- ERCC mix file provided in options_files folder.  If using a different control set, mimic this format for use.
-5. Copy 'RNAseq_experiment_file.yml' into a new folder.
+5. Copy 'RNAseq_experiment_file.yml' into a newly created folder.
 6. Rename your experiment file as needed and edit the file to fit your experiment using a text editor (ie. textEdit).  
 
 #### Run the pipeline:
 
-7. To run the pipeline, modify the RNAseq_bsub.sh included in the folder and run:
+7. To run the pipeline, use the following code directly in the LSF login-node:
 
-> bsub < RNAseq_bsub.sh
-
-8. Alternatively, use the following code directly in the LSF login-node, replacing anything in << >> with the approprite file names:
-	
-> bsub -q general -n 1 -R 'rusage[mem=3000]' -W 120:00 -o <<RNAseq>>.out -e <<RNAseq>>.err -P <<project>> <<< 'module rm python share-rpms65;source activate RNAseq;<<./path/to/RNAseq.py>> -f <<RNAseq_experimental_file>>.yml -t <</path/to/RNAseq.ipynb>>'
+> source activate RNAseq
+> python /path/to/RNAseq.py -f /path/to/RNAseq_experimental_file.yml -s -p your_lsf_project
 
 Extra options: 
-- Add '-o' to name your output notebook something other than your experimental file name.
+- Add '-t /path/to/RNAseq.ipynb' if you running as a jupyter notebook
+- Add '-o /path/to/output_RNAseq.ipynb' to name your output notebook something other than your experimental file name.
 - Add --no-notebook to run as a python script with a log file output.
+- For all options: 'python RNAseq.py --help'
+
+8. Alternatively, modify the RNAseq_bsub.sh included in the folder and run:
+	
+> bsub < RNAseq_bsub.sh
 
 9. In case of error, use the above command to pick up from last completed step if the restart option is 'no' in the experimetnal file.  In notebook mode, restarting from the last completed step will erase all priovous outputs to the notebook and start from the last step.  To avoid this, rename the output notebook.   
 
 Jupyter notebooks can be visualized with nteract (https://nteract.io) if you are not familiar with jupyter notebooks.
 
-### RNAseq.py can be imported to python as a module with the following attributes:
+## RNAseq.py can be imported to python as a module with the following attributes:
 	
 Experiment object can be passed to the following functions and returned: exp = function(exp):
 - RNAseq.DESeq2(exp)

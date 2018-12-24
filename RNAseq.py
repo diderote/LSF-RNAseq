@@ -104,7 +104,7 @@ def read_pd(file):
     if (file.split('.')[-1] == 'txt') or (file.split('.')[-1] == 'tab'):
         return pd.read_table(file, header=0, index_col=0)
     elif (file.split('.')[-1] == 'xls') or (file.split('.')[-1] == 'xlsx'):
-        return pd.read_excel(file)
+        return pd.read_excel(file, index_col=0)
     else:
         raise IOError("Cannot parse file.  Make sure it is .txt, .xls, or .xlsx")
 
@@ -398,7 +398,7 @@ def parse_yaml(experimental_file):
     return exp
 
 
-def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, cores=1):
+def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, cores=1, submit=False):
     '''
     Sends job to LSF pegasus.ccs.miami.edu
     '''
@@ -426,7 +426,8 @@ def send_job(command_list, job_name, job_log_folder, q, mem, log_file, project, 
     with open(job_path_name, 'w') as file:
         file.write(cmd)
     os.system(f'bsub < {job_path_name}')
-    output(f'sending {job_name} as ID_{rand_id}...', log_file)
+    if submit is False:
+        output(f'sending {job_name} as ID_{rand_id}...', log_file)
     time.sleep(2)  # too many conda activations at once sometimes leads to inability to activate during a job.
 
     return rand_id
@@ -2697,10 +2698,35 @@ if run_main:
     parser.add_argument('--no-notebook', dest='notebook', help='run as python script', action='store_false')
     parser.add_argument('--template_notebook', '-t', required=False, help='location of template notebook', type=str)
     parser.add_argument('--out_notebook', '-o', required=False, help='name of output notebook (without .ipynb)', type=str)
-    parser.set_defaults(notebook=True)
+    parser.add_argument('--submit', '-s', required=False, help='true will resubmit with conda initialization', action='store_true')
+    parser.add_argument('--project', '-p', required=False, help='LSF project name for submission', type=str)
+    parser.set_defaults(notebook=True, submit=False)
     args = parser.parse_args()
 
-    if args.notebook:
+    if args.submit:
+        cmd = f'python RNAseq.py -f {args.experimental_file}'
+        if not args.notebook:
+            cmd += ' --no-notebook'
+        else:
+            cmd += f' -t {args.template_notebook}'
+            if args.out_notebook:
+                cmd += f' -o {args.out_notebook}'
+
+        submission_header = ['module rm python share-rpms65', 'source activate RNAseq', cmd]
+
+        job_name = args.experimental_file.split('.')[0]
+
+        send_job(command_list=submission_header,
+                 job_name=job_name,
+                 job_log_folder=f'{os.getcwd()}/',
+                 q='general',
+                 mem=3000,
+                 log_file=f'bsub_{job_name}.log',
+                 project=args.project,
+                 cores=1,
+                 submit=True)
+
+    elif args.notebook:
         if (os.path.isfile(args.template_notebook) is False) or (args.template_notebook is False):
             raise IOError(f'Location of template notebook not found. Use -t option.')
         else:
