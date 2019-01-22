@@ -50,6 +50,8 @@ __license__ = 'MIT'
 __version__ = '0.7'
 
 run_main = True if __name__ == '__main__' else False
+if run_main or ("DISPLAY" in os.environ):
+    plt.switch_backend('Agg')
 
 
 class Experiment:
@@ -312,8 +314,8 @@ def parse_yaml(experimental_file):
     if yml['Tasks']['Differential_Expression']:
         output("Parsing experimental design for differential expression...\n", exp.log_file)
 
-        exp.conditions = {key: condition.split(',') for key, condition in yml['Conditions'].items() if condition is not None}
-        exp.de_tests = {key: test for key, test in yml['Designs'].items() if test['Test_condition'] is not None}
+        exp.conditions = {key.replace('-', '_'): condition.split(',') for key, condition in yml['Conditions'].items() if condition is not None}
+        exp.de_tests = {key.replace('-', '_'): test for key, test in yml['Designs'].items() if test['Test_condition'] is not None}
         for key, test in exp.de_tests.items():
             all_conditions = test['All_conditions'].split(',')
             all_samples = list({exp.samples[int(sample)] for sample in test['All_samples'].split(',')})
@@ -380,7 +382,8 @@ def parse_yaml(experimental_file):
     if yml['Overlaps']:
         for key, item in yml['Overlaps'].items():
             if bool(item):
-                exp.overlaps[key] = item.split(':')
+                raw_names = item.split(':')
+                exp.overlaps[key.replace('-', '_')] = [name.replace('-', '_') for name in raw_names]
         output(f'\nOverlapping {len(list(exp.overlaps.keys()))} differential analysis comparison(s).', exp.log_file)
         output(f'{exp.overlaps}\n', exp.log_file)
     else:
@@ -2520,6 +2523,8 @@ def final_qc(exp):
         # Wait for jobs to finish
         job_wait(exp.job_id, exp.log_file)
 
+        os.makdirs(f'{exp.scratch}/QC', exist_ok=True)
+
         if os.path.isdir(f'{exp.scratch}multiqc_data'):
             copytree(f'{exp.scratch}multiqc_data', f'{exp.scratch}/QC/multiqc_data')
             rmtree(f'{exp.scratch}multiqc_data')
@@ -2690,7 +2695,6 @@ def pipeline(experimental_file):
 
 if run_main:
     import argparse
-    plt.switch_backend('Agg')
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
