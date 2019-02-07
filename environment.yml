@@ -23,7 +23,6 @@ dependencies:
 - deeptools=3.1.1
 - fastq-screen=0.11.3
 - fastqc=0.11.6
-- gseapy
 - ipykernel=4.8.2
 - kallisto=0.43.0
 - multiqc=1.6a0
@@ -54,3 +53,4 @@ dependencies:
 - openjdk=8.0.121
 - scikit-learn=0.19.1
 - scipy=1.1.0
+- notebook
