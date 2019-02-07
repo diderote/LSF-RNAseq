@@ -24,14 +24,22 @@ import pickle
 import random
 import time
 import reprlib
+import sys
+import json
+import logging
+import errno
 from shutil import copy2, copytree, rmtree, move
 from datetime import datetime
+from io import StringIO
+from time import sleep
+#from tempfile import TemporaryDirectory
 
 run_main = True if __name__ == '__main__' else False
 if run_main:
     import matplotlib
     matplotlib.use('Agg')
 
+import requests
 import yaml
 from IPython.display import HTML, display, Image
 import seaborn as sns
@@ -47,8 +55,14 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
 from scipy import stats
 import PyPDF2
-import gseapy
 import papermill as pm
+from matplotlib.figure import Figure
+from matplotlib.colors import Normalize
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import MaxNLocator
+from requests.packages.urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
 __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
@@ -1589,13 +1603,13 @@ def DESeq2(exp):
         # DESeq2 results
         exp.de_results[f'DE2_{comparison}'].sort_values(by='padj', ascending=True, inplace=True)
         exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].index
-        exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].gene_name.apply(lambda x: x.split("_")[-1])
+        exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
         exp.de_results[f'DE2_{comparison}'].to_excel(f'{out_dir}{comparison}-DESeq2-results.xlsx')
         # Shrunken LFC using apeglm or ashr method
         if exp.lfcshrink:
             exp.de_results[f'shrunkenLFC_{comparison}'].sort_values(by='log2FoldChange', ascending=False, inplace=True)
             exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].index
-            exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].gene_name.apply(lambda x: x.split("_")[-1])
+            exp.de_results[f'shrunkenLFC_{comparison}']['gene_name'] = exp.de_results[f'shrunkenLFC_{comparison}'].gene_name.apply(lambda x: x.split("_")[1])
             exp.de_results[f'shrunkenLFC_{comparison}'].to_excel(f'{out_dir}{comparison}-DESeq2-shrunken-LFC.xlsx')
 
         # Normlized counts
@@ -1611,7 +1625,7 @@ def DESeq2(exp):
     exp.de_results['blind_rlog'].index = count_matrix.index
     exp.de_results['blind_rlog'].columns = count_matrix.columns
     exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].index
-    exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].gene_name.apply(lambda x: x.split("_")[-1])
+    exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].gene_name.apply(lambda x: x.split("_")[1])
     exp.de_results['blind_rlog'].to_excel(f'{out_dir}ALL-samples-blind-rlog-counts.xlsx')
 
     # vst
@@ -1619,7 +1633,7 @@ def DESeq2(exp):
     exp.de_results['blind_vst'].index = count_matrix.index
     exp.de_results['blind_vst'].columns = count_matrix.columns
     exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].index
-    exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].gene_name.apply(lambda x: x.split("_")[-1])
+    exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].gene_name.apply(lambda x: x.split("_")[1])
     exp.de_results['blind_vst'].to_excel(f'{out_dir}ALL-samples-blind-variance-stabilized-log2-counts.xlsx')
 
     '''
@@ -2033,7 +2047,7 @@ def clustermap(exp):
         os.makedirs(out_dir, exist_ok=True)
 
         rlog = exp.de_results[f'{comparison}_log2_normCounts']
-        rlog['gene_name'] = [name.split("_")[-1] for name in rlog.index.tolist()]
+        rlog['gene_name'] = [name.split("_")[1] for name in rlog.index.tolist()]
 
         sig = set(exp.sig_lists[comparison]['2FC_UP'] | exp.sig_lists[comparison]['2FC_DN'])
         if len(sig) < 2:
@@ -2082,7 +2096,7 @@ def enrichr(gene_list, description, out_dir):
     gene_sets = ['KEGG_2016', 'GO_Biological_Process_2017b', 'OMIM_Disease', 'ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X']
 
     for gene_set in gene_sets:
-        gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
+        enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
         out_result(f'{out_dir}{gene_set}.{description}.enrichr.reports.png', f'Enrichr: {gene_set} for {description}')
 
     return
@@ -2683,6 +2697,573 @@ def pipeline(experimental_file):
         # exp =validated_run('decomp',decomposition,exp)
         exp = validated_run('MultiQC', final_qc, exp)
         exp = validated_run('Finished', finish, exp)
+
+
+'''
+below code is adapted from gseapy
+'''
+
+class Enrichr(object):
+    """Enrichr API"""
+    def __init__(self, gene_list, gene_sets, organism='human', descriptions='',
+                 outdir='Enrichr', cutoff=0.05, background='hsapiens_gene_ensembl',
+                 format='pdf', figsize=(6.5,6), top_term=10, no_plot=False, 
+                 verbose=False):
+
+        self.gene_list = gene_list
+        self.gene_sets = gene_sets
+        self.descriptions = str(descriptions)
+        self.outdir = outdir
+        self.cutoff = cutoff
+        self.format = format
+        self.figsize = figsize
+        self.__top_term = int(top_term)
+        self.__no_plot = no_plot
+        self.verbose = bool(verbose)
+        self.module = "enrichr"
+        self.res2d = None
+        self._processes = 1
+        self.background = background
+        self._bg = None
+        self.organism = organism
+        self._organism = None
+        # init logger
+        logfile = self.prepare_outdir()
+        self._logger = log_init(outlog=logfile,
+                                log_level=logging.INFO if self.verbose else logging.WARNING)
+
+
+    def prepare_outdir(self):
+        """create temp directory."""
+        self._outdir = self.outdir
+        if self._outdir is None:
+            self._tmpdir = TemporaryDirectory()
+            self.outdir = self._tmpdir.name
+        elif isinstance(self.outdir, str):
+            mkdirs(self.outdir)
+        else:
+            raise Exception("Error parsing outdir: %s"%type(self.outdir))
+
+        # handle gene_sets
+        logfile = os.path.join(self.outdir, "gseapy.%s.%s.log" % (self.module, self.descriptions))
+        return logfile
+
+    def parse_genesets(self):
+        """parse gene_sets input file type"""
+
+        enrichr_library = self.get_libraries()
+        if isinstance(self.gene_sets, list):
+            gss = self.gene_sets
+        elif isinstance(self.gene_sets, str):
+            gss = [ g.strip() for g in self.gene_sets.strip().split(",") ]
+        elif isinstance(self.gene_sets, dict):
+            gss = [self.gene_sets]
+        else:
+            raise Exception("Error parsing enrichr libraries, please provided corrected one")
+        
+        # gss: a list contain .gmt, dict, enrichr_liraries.
+        # now, convert .gmt to dict
+        gss_exist = [] 
+        for g in gss:
+            if isinstance(g, dict): 
+                gss_exist.append(g)
+                continue
+
+            if isinstance(g, str): 
+                if g in enrichr_library: 
+                    gss_exist.append(g)
+                    continue
+                if g.lower().endswith(".gmt") and os.path.exists(g):
+                    self._logger.info("User Defined gene sets is given: %s"%g)
+                    with open(g) as genesets:
+                        g_dict = { line.strip().split("\t")[0]: line.strip().split("\t")[2:]
+                                        for line in genesets.readlines() }
+                    gss_exist.append(g_dict)
+        return gss_exist
+
+    def parse_genelists(self):
+        """parse gene list"""
+        if isinstance(self.gene_list, list):
+            genes = self.gene_list
+        elif isinstance(self.gene_list, pd.DataFrame):
+            # input type is bed file
+            if self.gene_list.shape[1] >=3:
+                genes= self.gene_list.iloc[:,:3].apply(lambda x: "\t".join([str(i) for i in x]), axis=1).tolist()
+            # input type with weight values
+            elif self.gene_list.shape[1] == 2:
+               genes= self.gene_list.apply(lambda x: ",".join([str(i) for i in x]), axis=1).tolist()
+            else:
+               genes = self.gene_list.squeeze().tolist()
+        elif isinstance(self.gene_list, pd.Series):
+            genes = self.gene_list.squeeze().tolist()
+        else:
+            # get gene lists or bed file, or gene list with weighted values.
+            genes=[]
+            with open(self.gene_list) as f:
+                for gene in f:
+                    genes.append(gene.strip())
+
+        self._isezid = all(map(self._is_entrez_id, genes))
+        if self._isezid: 
+            self._gls = set(map(int, self._gls))
+        else:
+            self._gls = genes
+
+        return '\n'.join(genes)
+
+    def send_genes(self, gene_list, url):
+        """ send gene list to enrichr server"""
+        payload = {
+          'list': (None, gene_list),
+          'description': (None, self.descriptions)
+           }
+        # response
+        response = requests.post(url, files=payload)
+        if not response.ok:
+            raise Exception('Error analyzing gene list')
+        sleep(1)
+        job_id = json.loads(response.text)
+
+        return job_id
+
+    def check_genes(self, gene_list, usr_list_id):
+        '''
+        Compare the genes sent and received to get succesfully recognized genes
+        '''
+        response = requests.get('http://amp.pharm.mssm.edu/Enrichr/view?userListId=%s' % usr_list_id)
+        if not response.ok:
+            raise Exception('Error getting gene list back')
+        returnedL = json.loads(response.text)["genes"]
+        returnedN = sum([1 for gene in gene_list if gene in returnedL])
+        self._logger.info('{} genes successfully recognized by Enrichr'.format(returnedN))
+
+    def get_results(self, gene_list):
+        """Enrichr API"""
+        ADDLIST_URL = 'http://amp.pharm.mssm.edu/%sEnrichr/addList'%self._organism
+        job_id = self.send_genes(gene_list, ADDLIST_URL)
+        user_list_id = job_id['userListId']
+
+        RESULTS_URL = 'http://amp.pharm.mssm.edu/%sEnrichr/export'%self._organism
+        query_string = '?userListId=%s&filename=%s&backgroundType=%s'
+        # set max retries num =5
+        s = retry(num=5)
+        filename = "%s.%s.reports" % (self._gs, self.descriptions)
+        url = RESULTS_URL + query_string % (user_list_id, filename, self._gs)
+        response = s.get(url, stream=True, timeout=None)
+        # response = requests.get(RESULTS_URL + query_string % (user_list_id, gene_set))
+        sleep(2)
+        res = pd.read_table(StringIO(response.content.decode('utf-8')))
+        return [job_id['shortId'], res]
+
+    def _is_entrez_id(self, idx):
+        try:
+            int(idx)
+            return True
+        except:
+            return False
+
+    def get_libraries(self,):
+        """return active enrichr library name. Offical API """
+        lib_url='http://amp.pharm.mssm.edu/%sEnrichr/datasetStatistics'%self._organism
+        libs_json = json.loads(requests.get(lib_url).text)
+        libs = [lib['libraryName'] for lib in libs_json['statistics']]
+        return sorted(libs)
+
+
+def retry(num=5):
+    """"retry connection.
+    
+        define max tries num
+        if the backoff_factor is 0.1, then sleep() will sleep for
+        [0.1s, 0.2s, 0.4s, ...] between retries.
+        It will also force a retry if the status code returned is 500, 502, 503 or 504.    
+    
+    """
+    s = requests.Session()
+    retries = Retry(total=num, backoff_factor=0.1,
+                    status_forcelist=[500, 502, 503, 504])
+    s.mount('http://', HTTPAdapter(max_retries=retries))
+
+    return s
+
+
+    def get_organism(self):
+        """Select Enrichr organism from below:
+           Human & Mouse: H. sapiens & M. musculus
+           Fly: D. melanogaster
+           Yeast: S. cerevisiae
+           Worm: C. elegans
+           Fish: D. rerio
+        """
+
+        organism = {'default': ['', 'hs', 'mm', 'human','mouse',
+                                'homo sapiens', 'mus musculus',
+                                'h. sapiens', 'm. musculus'],
+                    'Fly': ['fly', 'd. melanogaster', 'drosophila melanogaster'],
+                    'Yeast': ['yeast', 's. cerevisiae', 'saccharomyces cerevisiae'],
+                    'Worm': ['worm', 'c. elegans', 'caenorhabditis elegans', 'nematode'],
+                    'Fish': ['fish', 'd. rerio', 'danio rerio', 'zebrafish']
+                 }
+
+        for k, v in organism.items():
+            if self.organism.lower() in v :
+                self._organism = k
+
+        if self._organism is None:
+            raise Exception("No supported organism found !!!")
+
+        if self._organism == 'default':
+            self._organism = ''
+        return
+
+
+    def run(self):
+        """run enrichr for one sample gene list but multi-libraries"""
+
+        # set organism
+        self.get_organism()
+        # read input file
+        genes_list = self.parse_genelists()
+        gss = self.parse_genesets()
+        # if gmt
+        self._logger.info("Connecting to Enrichr Server to get latest library names")
+        if len(gss) < 1:
+            sys.stderr.write("Not validated Enrichr library name provided\n")
+            sys.stdout.write("Hint: use get_library_name() to view full list of supported names")
+            sys.exit(1)
+        self.results = pd.DataFrame()
+
+        for g in gss: 
+            ## online mode
+            self._gs = str(g)
+            self._logger.debug("Start Enrichr using library: %s" % (self._gs))
+            self._logger.info('Analysis name: %s, Enrichr Library: %s' % (self.descriptions, self._gs))
+            shortID, res = self.get_results(genes_list)
+            # Remember gene set library used
+            res.insert(0, "Gene_set", self._gs)
+             # Append to master dataframe
+            self.results = self.results.append(res, ignore_index=True)
+            self.res2d = res
+            if self._outdir is None: continue
+            self._logger.info('Save file of enrichment results: Job Id:' + str(shortID))
+            outfile = "%s/%s.%s.%s.reports.txt" % (self.outdir, self._gs, self.descriptions, self.module)
+            self.res2d.to_csv(outfile, index=False, encoding='utf-8', sep="\t")
+            # plotting
+            if not self.__no_plot:
+                msg = barplot(df=res, cutoff=self.cutoff, figsize=self.figsize,
+                              top_term=self.__top_term, color='steelblue',
+                              title=self._gs,
+                              ofname=outfile.replace("txt", self.format))
+                if msg is not None : self._logger.warning(msg)
+            self._logger.info('Done.\n')
+        # clean up tmpdir
+        if self._outdir is None: self._tmpdir.cleanup()
+
+        return
+
+
+def enrichr(gene_list, gene_sets, organism='human', description='',
+            outdir='Enrichr', background='hsapiens_gene_ensembl', cutoff=0.05,
+            format='pdf', figsize=(8,6), top_term=10, no_plot=False, verbose=False):
+    """Enrichr API.
+    :param gene_list: Flat file with list of genes, one gene id per row, or a python list object
+    :param gene_sets: Enrichr Library to query. Required enrichr library name(s). Separate each name by comma.
+    :param organism: Enrichr supported organism. Select from (human, mouse, yeast, fly, fish, worm).
+                     see here for details: https://amp.pharm.mssm.edu/modEnrichr
+    :param description: name of analysis. optional.
+    :param outdir: Output file directory
+    :param float cutoff: Adjusted P-value (benjamini-hochberg correction) cutoff. Default: 0.05
+    :param int background: BioMart dataset name for retrieving background gene information.
+                           This argument only works when gene_sets input is a gmt file or python dict.
+                           You could also specify a number by yourself, e.g. total expressed genes number.
+                           In this case, you will skip retrieving background infos from biomart.
+    
+    Use the code below to see valid background dataset names from BioMart.
+    Here are example code:
+    >>> from gseapy.parser import Biomart 
+    >>> bm = Biomart(verbose=False, host="asia.ensembl.org")
+    >>> ## view validated marts
+    >>> marts = bm.get_marts()
+    >>> ## view validated dataset
+    >>> datasets = bm.get_datasets(mart='ENSEMBL_MART_ENSEMBL')
+    :param str format: Output figure format supported by matplotlib,('pdf','png','eps'...). Default: 'pdf'.
+    :param list figsize: Matplotlib figsize, accept a tuple or list, e.g. (width,height). Default: (6.5,6).
+    :param bool no_plot: If equals to True, no figure will be drawn. Default: False.
+    :param bool verbose: Increase output verbosity, print out progress of your job, Default: False.
+    :return: An Enrichr object, which obj.res2d stores your last query, obj.results stores your all queries.
+    
+    """
+    enr = Enrichr(gene_list, gene_sets, organism, description, outdir,
+                  cutoff, background, format, figsize, top_term, no_plot, verbose)
+    enr.run()
+
+    return enr
+
+
+def barplot(df, column='Adjusted P-value', title="", cutoff=0.05, top_term=10,
+            figsize=(6.5,6), color='steelblue', ofname=None, **kwargs):
+    """Visualize enrichr results.
+    :param df: GSEApy DataFrame results.
+    :param column: which column of DataFrame to show. Default: Adjusted P-value
+    :param title: figure title.
+    :param cutoff: cut-off of the cloumn you've chosen.
+    :param top_term: number of top enriched terms to show.
+    :param figsize: tuple, matplotlib figsize.
+    :param color: color for bars.
+    :param ofname: output file name. If None, don't save figure    
+    
+    """
+
+    colname = column   
+    if colname in ['Adjusted P-value', 'P-value']: 
+        df = df[df[colname] <= cutoff]
+        if len(df) < 1: 
+            msg = "Warning: No enrich terms using library %s when cutoff = %s"%(title, cutoff)
+            return msg
+        df = df.assign(logAP = lambda x: - x[colname].apply(np.log10))
+        colname = 'logAP' 
+    dd = df.sort_values(by=colname).iloc[-top_term:,:]
+    # dd = d.head(top_term).sort_values('logAP')
+    # create bar plot
+    if hasattr(sys, 'ps1') and (ofname is None):
+        # working inside python console, show (True) figure
+        fig = plt.figure(figsize=figsize)
+    else:
+        # If working on commandline, don't show figure
+        fig = Figure(figsize=figsize)
+        canvas = FigureCanvas(fig)
+    ax = fig.add_subplot(111)
+    bar = dd.plot.barh(x='Term', y=colname, color=color, 
+                       alpha=0.75, fontsize=16, ax=ax)
+    
+    if column in ['Adjusted P-value', 'P-value']:
+        xlabel = "-log$_{10}$(%s)"%column
+    else:
+        xlabel = column 
+    bar.set_xlabel(xlabel, fontsize=16, fontweight='bold')
+    bar.set_ylabel("")
+    bar.set_title(title, fontsize=24, fontweight='bold')
+    bar.xaxis.set_major_locator(MaxNLocator(integer=True))
+    bar.legend_.remove()
+    adjust_spines(ax, spines=['left','bottom'])
+
+    if ofname is not None: 
+        # canvas.print_figure(ofname, bbox_inches='tight', dpi=300)
+        fig.savefig(ofname, bbox_inches='tight', dpi=300)
+        return
+    return ax
+
+
+def mkdirs(outdir):
+
+    try:
+        os.makedirs(outdir)
+    except OSError as exc:
+        if exc.errno != errno.EEXIST:
+            raise exc
+        pass
+
+
+def log_init(outlog, log_level=logging.INFO):
+    """logging start"""
+
+    # clear old root logger handlers
+    logging.getLogger("gseapy").handlers = []
+    # init a root logger
+    logging.basicConfig(level    = logging.DEBUG,
+                        format   = 'LINE %(lineno)-4d: %(asctime)s [%(levelname)-8s] %(message)s',
+                        filename = outlog,
+                        filemode = 'w')
+
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(log_level)
+    # set a format which is simpler for console use
+    formatter = logging.Formatter('%(asctime)s %(message)s')
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add handlers
+    logging.getLogger("gseapy").addHandler(console)
+    logger = logging.getLogger("gseapy")
+    # logger.setLevel(log_level)
+    return logger
+
+
+def dotplot(df, column='Adjusted P-value', title='', cutoff=0.05, top_term=10, 
+            sizes=None, norm=None, legend=True, figsize=(6, 5.5), 
+            cmap='RdBu_r', ofname=None, **kwargs):
+    """Visualize enrichr results.
+    :param df: GSEApy DataFrame results.
+    :param column: which column of DataFrame to show. Default: Adjusted P-value
+    :param title: figure title
+    :param cutoff: p-adjust cut-off.
+    :param top_term: number of enriched terms to show.
+    :param ascending: bool, the order of y axis.
+    :param sizes: tuple, (min, max) scatter size. Not functional for now
+    :param norm: maplotlib.colors.Normalize object.
+    :param legend: bool, whether to show legend.
+    :param figsize: tuple, figure size. 
+    :param cmap: matplotlib colormap
+    :param ofname: output file name. If None, don't save figure 
+    """
+
+
+    colname = column    
+    # sorting the dataframe for better visualization
+    if colname in ['Adjusted P-value', 'P-value']: 
+        df = df[df[colname] <= cutoff]
+        if len(df) < 1: 
+            msg = "Warning: No enrich terms when cutoff = %s"%cutoff
+            return msg
+        df = df.assign(logAP=lambda x: - x[colname].apply(np.log10))
+        colname='logAP'
+    df = df.sort_values(by=colname).iloc[-top_term:,:]
+    # 
+    temp = df['Overlap'].str.split("/", expand=True).astype(int)
+    df = df.assign(Hits=temp.iloc[:,0], Background=temp.iloc[:,1])
+    df = df.assign(Hits_ratio=lambda x:x.Hits / x.Background)
+    # x axis values
+    x = df.loc[:, colname].values
+    combined_score = df['Combined Score'].round().astype('int')
+    # y axis index and values
+    y = [i for i in range(0,len(df))]
+    ylabels = df['Term'].values
+    # Normalise to [0,1]
+    # b = (df['Count']  - df['Count'].min())/ np.ptp(df['Count'])
+    # area = 100 * b
+    
+    # control the size of scatter and legend marker
+    levels = numbers = np.sort(df.Hits.unique())
+    if norm is None:
+        norm = Normalize()
+    elif isinstance(norm, tuple):
+        norm = Normalize(*norm)
+    elif not isinstance(norm, Normalize):
+        err = ("``size_norm`` must be None, tuple, "
+                "or Normalize object.")
+        raise ValueError(err)
+    min_width, max_width = np.r_[20, 100] * plt.rcParams["lines.linewidth"]
+    norm.clip = True
+    if not norm.scaled():
+        norm(np.asarray(numbers))
+    size_limits = norm.vmin, norm.vmax
+    scl = norm(numbers)
+    widths = np.asarray(min_width + scl * (max_width - min_width))
+    if scl.mask.any():
+        widths[scl.mask] = 0
+    sizes = dict(zip(levels, widths))
+    df['sizes'] = df.Hits.map(sizes)
+    area = df['sizes'].values
+
+    # creat scatter plot
+    if hasattr(sys, 'ps1') and (ofname is None):
+        # working inside python console, show figure
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        # If working on commandline, don't show figure
+        fig = Figure(figsize=figsize)
+        canvas = FigureCanvas(fig)
+        ax = fig.add_subplot(111)
+    vmin = np.percentile(combined_score.min(), 2)
+    vmax =  np.percentile(combined_score.max(), 98)
+    sc = ax.scatter(x=x, y=y, s=area, edgecolors='face', c=combined_score,
+                    cmap=cmap, vmin=vmin, vmax=vmax)
+
+    if column in ['Adjusted P-value', 'P-value']:
+        xlabel = "-log$_{10}$(%s)"%column
+    else:
+        xlabel = column 
+    ax.set_xlabel(xlabel, fontsize=14, fontweight='bold')
+    ax.yaxis.set_major_locator(plt.FixedLocator(y))
+    ax.yaxis.set_major_formatter(plt.FixedFormatter(ylabels))
+    ax.set_yticklabels(ylabels, fontsize=16)
+    
+    # ax.set_ylim([-1, len(df)])
+    ax.grid()
+    # colorbar
+    cax=fig.add_axes([0.95,0.20,0.03,0.22])
+    cbar = fig.colorbar(sc, cax=cax,)
+    cbar.ax.tick_params(right=True)
+    cbar.ax.set_title('Combined\nScore',loc='left', fontsize=12)
+
+    # for terms less than 3
+    if len(df) >= 3:
+        # find the index of the closest value to the median
+        idx = [area.argmax(), np.abs(area - area.mean()).argmin(), area.argmin()]
+        idx = unique(idx)
+    else:
+        idx = df.index.values
+    label = df.iloc[idx, df.columns.get_loc('Hits')]
+    
+    if legend:
+        handles, _ = ax.get_legend_handles_labels()
+        legend_markers = []
+        for ix in idx: 
+            legend_markers.append(ax.scatter([],[], s=area[ix], c='b'))
+        # artist = ax.scatter([], [], s=size_levels,) 
+        ax.legend(legend_markers, label, title='Hits')
+    ax.set_title(title, fontsize=20, fontweight='bold')
+    
+    if ofname is not None: 
+        # canvas.print_figure(ofname, bbox_inches='tight', dpi=300)
+        fig.savefig(ofname, bbox_inches='tight', dpi=300)
+        return
+    return ax
+
+
+def colorbar(mappable):
+    ax = mappable.axes
+    fig = ax.figure
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="2%", pad=0.05)
+    return fig.colorbar(mappable, cax=cax)
+
+
+def unique(seq):
+    """Remove duplicates from a list in Python while preserving order.
+    :param seq: a python list object.
+    :return: a list without duplicates while preserving order.
+    """
+
+    seen = set()
+    seen_add = seen.add
+    """
+    The fastest way to sovle this problem is here
+    Python is a dynamic language, and resolving seen.add each iteration
+    is more costly than resolving a local variable. seen.add could have
+    changed between iterations, and the runtime isn't smart enough to rule
+    that out. To play it safe, it has to check the object each time.
+    """
+
+    return [x for x in seq if x not in seen and not seen_add(x)]
+
+
+def adjust_spines(ax, spines):
+    """function for removing spines and ticks.
+    :param ax: axes object
+    :param spines: a list of spines names to keep. e.g [left, right, top, bottom]
+                    if spines = []. remove all spines and ticks.
+    """
+    for loc, spine in ax.spines.items():
+        if loc in spines:
+            # spine.set_position(('outward', 10))  # outward by 10 points
+            # spine.set_smart_bounds(True)
+            continue
+        else:
+            spine.set_color('none')  # don't draw spine
+
+    # turn off ticks where there is no spine
+    if 'left' in spines:
+        ax.yaxis.set_ticks_position('left')
+    else:
+        # no yaxis ticks
+        ax.yaxis.set_ticks([])
+
+    if 'bottom' in spines:
+        ax.xaxis.set_ticks_position('bottom')
+    else:
+        # no xaxis ticks
+        ax.xaxis.set_ticks([])
 
 
 if run_main:

@@ -1,5 +1,8 @@
 # LSF RNAseq pipeline
 
+### NOTE: currently working to package this for faster loading and execution ###
+### NOTE: re-writing with a docker image and local options ###
+
 This pipline handles processing and analyses for RNAseq data on the University of Miami's Pegasus Computer Cluster using and LSF resource manager.  (Can be readily adpated to other resource managers: SGE, SLURM)  When fully implemented from start to finish it performs the following tasks:
 
 1. Screening for contamination of other genomes
@@ -67,7 +70,8 @@ All submission scripts, error and output files are saved.
 2. Install miniconda: 'bash ~/Miniconda3-latest-Linux-x86_64.sh'
 3. After installation type the following commands:
 
-- If in pegasus:
+- If in pegasus, the conda environment must be made in an interactive node:
+> bsub -Is -q interactive -P yourprojectname bash
 > module rm python share-rpms65
 - To create the environment:
 > conda env create -f /path/to/environment.yml
@@ -90,7 +94,7 @@ All submission scripts, error and output files are saved.
 
 7. To run the pipeline, use the following code directly in the LSF login-node:
 
-> source acttivate RNAseq
+> source activate RNAseq
 > python /path/to/RNAseq.py -f /path/to/RNAseq_experimental_file.yml -s -p your_lsf_project
 
 Extra options: 
