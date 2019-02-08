@@ -82,7 +82,7 @@ class Experiment:
 
 
 def html_header():
-    return ''.join(['<h1>ChIPseq Analysis Notebook</h1>',
+    return ''.join(['<h1>RNAseq Analysis Notebook</h1>',
                     f'<body><b>Experiment Date: {datetime.now():%Y-%m-%d}<br>',
                     f'Pipeline version: {__version__}</b><br>',
                     '<a href="http://www.github.com/diderote/LSF-RNAseq">Pipeline Code</a><br>',
