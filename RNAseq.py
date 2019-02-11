@@ -2515,7 +2515,7 @@ def final_qc(exp):
         # Wait for jobs to finish
         job_wait(exp.job_id, exp.log_file)
 
-        os.makdirs(f'{exp.scratch}/QC', exist_ok=True)
+        os.makedirs(f'{exp.scratch}/QC', exist_ok=True)
 
         if os.path.isdir(f'{exp.scratch}multiqc_data'):
             copytree(f'{exp.scratch}multiqc_data', f'{exp.scratch}/QC/multiqc_data')
