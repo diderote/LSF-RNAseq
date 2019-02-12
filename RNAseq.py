@@ -2353,7 +2353,7 @@ def plot_venn2(Series, overlap_name, folder, background=None):
 
     if background:
         pvalue = stats.hypergeom.sf(Series.iloc[2], background, Series.iloc[0], Series.iloc[1])
-        plt.text(0, 0, f'p-value = {pvalue:.03g}', fontsize=10)
+        plt.text(0, 0, f'p-value = {pvalue:.03g}', fontsize=10, transform=c[1].axes.transAxes)
 
     plt.title(f'{overlap_name.replace("_", " ")} Overlaps')
     plt.tight_layout()
