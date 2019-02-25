@@ -11,10 +11,8 @@ To do:
     - change designs to allow for non-bindary conditions ('Condition_A: a,a,b,b,c,c')
     - add sleuth for mouse and make compatable with new v.7 strategy
     - optimize STAR
-    - fine tune DE tests for lfcshrink or GC norm option per test
-    - if restarting with papermill... make different ipynb
-    - add rlog with full design
     - add single cell (deseq2, min to replace=Inf, other sc options zeroinflation?, LRT)
+    - convert to package
 
 '''
 import os
@@ -52,11 +50,15 @@ import papermill as pm
 
 __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
-__version__ = '0.7'
+__version__ = '0.8'
 
 class Experiment:
     '''
     Experiment object for pipeline
+    Object can be passed through pipeline functions.
+    To Do: convert to sci-kit style fit for pipeline
+    Object can be pickled.
+
     '''
     def __init__(self):
         self.norm = 'Median-Ratios'
@@ -91,18 +93,24 @@ def html_header():
 
 
 def val_folder(folder):
+    '''
+    Returns correctly formated folder string.
+    '''
     folder = folder if folder.endswith('/') else f'{folder}/'
     return f'{os.getcwd()}/' if folder == '/' else folder
 
 
 def rout_write(rout):
     '''
-    function for setting r_out to print to file
+    Setting r output to print to file
     '''
     print(rout, file=open(f'{os.getcwd()}/R_out_{datetime.now():%Y-%m-%d}.txt', 'a'))
 
 
 def read_pd(file):
+    '''
+    File specific read in to pandas dataframe.
+    '''
     if (file.split('.')[-1] == 'txt') or (file.split('.')[-1] == 'tab'):
         return pd.read_table(file, header=0, index_col=0)
     elif (file.split('.')[-1] == 'xls') or (file.split('.')[-1] == 'xlsx'):
@@ -112,6 +120,9 @@ def read_pd(file):
 
 
 def output(text, log_file):
+    '''
+    Specifies output behavior based on interactive or non-interactive run mode.
+    '''
     if run_main:
         print(text, file=open(log_file, 'a'))
     else:
@@ -119,10 +130,16 @@ def output(text, log_file):
 
 
 def image_display(file):
+    '''
+    This allows mulitple images to be displayed from a single cell in a notebook.
+    '''
     display(Image(file))
 
 
 def out_result(image, text):
+    '''
+    Displays or prints in main_run mode.
+    '''
     if not run_main:
         if os.path.isfile(image):
             display(HTML(f'<h2>{text}</h2>'))
@@ -134,8 +151,8 @@ def out_result(image, text):
 def submission_prepend(submission=None, source='RNAseq', conda=None, module_list=[]):
     '''
     Prepends a string for a submission script
+    Edit these defualts to optimize for another HPC or other environment
     '''
-    
     if len(module_list) > 0:
         prepend = f'module rm {" ".join(module_list)}\n'
 
@@ -509,7 +526,7 @@ def fastqc(exp):
     os.makedirs(exp.qc_folder, exist_ok=True)
 
     for number, sample in exp.samples.items():
-        command_list = [submission_prepend(f'fastqc {exp.fastq_folder}{sample}*', module_list=['python','perl'])]
+        command_list = [submission_prepend(f'fastqc {exp.fastq_folder}{sample}*', module_list=['python', 'perl'])]
 
         exp.job_id.append(send_job(command_list=command_list,
                                    job_name=f'{sample}_fastqc',
@@ -557,7 +574,7 @@ def fastq_screen(exp):
 
     # Submit fastqc and fastq_screen jobs for each sample
     for number, sample in exp.samples.items():
-        command_list = [submission_prepend(f'fastq_screen --threads 4 --aligner bowtie2 {exp.fastq_folder}{sample}{fastq_end}', module_list=['python','perl'])]
+        command_list = [submission_prepend(f'fastq_screen --threads 4 --aligner bowtie2 {exp.fastq_folder}{sample}{fastq_end}', module_list=['python', 'perl'])]
 
         exp.job_id.append(send_job(command_list=command_list,
                                    job_name=f'{sample}_fastq_screen',
@@ -621,7 +638,7 @@ def trim(exp):
                 elif exp.seq_type == 'single':
                     cutadapt = f'cutadapt -j 4 -a AGATCGGAAGAGC --cores=10 {quality} -m 18 -o {exp.fastq_folder}{sample}_trim.fastq.gz {exp.fastq_folder}{sample}.fastq.gz'
 
-                command_list = [submission_prepend(cutadapt, module_list=['python','perl'])]
+                command_list = [submission_prepend(cutadapt, module_list=['python', 'perl'])]
 
                 exp.job_id.append(send_job(command_list=command_list,
                                            job_name=f"{sample}_trim",
@@ -693,7 +710,7 @@ def spike(exp):
                 elif exp.seq_type == 'single':
                     spike = f'STAR --runThreadN 4 --genomeDir {exp.genome_indicies["ERCC"]} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {ERCC_folder}{sample}_ERCC --quantMode GeneCounts'
 
-                command_list = [submission_prepend(spike, module_list['python','perl'])]
+                command_list = [submission_prepend(spike, module_list=['python', 'perl'])]
 
                 exp.job_id.append(send_job(command_list=command_list,
                                            job_name=f'{sample}_ERCC',
@@ -804,14 +821,18 @@ def spike(exp):
 
 
 def bam2bw(in_bam, out_bw, job_log_folder, sample, project, stranded, log_file):
-
+    '''
+    Convert a bam file to a compressed bigwig file for vizulaization
+    Splits forward and reverse stranded reads if stranded library is used.
+    Normlized by counts per million
+    '''
     if stranded:
-        command_list = [submission_prepend(module_list['python', 'share-rpms65']),
+        command_list = [submission_prepend(module_list=['python', 'share-rpms65']),
                         f'bamCoverage -p 4 --filterRNAstrand forward -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.fwd.bw',
                         f'bamCoverage -p 4 --filterRNAstrand reverse --scaleFactor -1 -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.rev.bw'
                         ]
     else:
-        command_list = [submission_prepend(module_list['python', 'share-rpms65']),
+        command_list = [submission_prepend(module_list=['python', 'share-rpms65']),
                         f'bamCoverage -p 4 -b {in_bam} --normalizeUsing CPM -bs 1 -o {out_bw}.cpm.bw'
                         ]
 
@@ -848,7 +869,7 @@ def star(exp):
                 elif exp.seq_type == 'single':
                     align = f'STAR --runThreadN 4 --outSAMtype BAM SortedByCoordinate --genomeDir {exp.genome_indicies["STAR"]} --readFilesIn {fname}.fastq.gz --readFilesCommand zcat --outFileNamePrefix {out_dir}{sample}_ --quantMode GeneCounts'
 
-                command_list = [submission_prepend(module_list['python', 'share-rpms65']),
+                command_list = [submission_prepend(module_list=['python', 'share-rpms65']),
                                 align,
                                 f'samtools index {sample}_Aligned.sortedByCoord.out.bam'
                                 ]
@@ -862,7 +883,7 @@ def star(exp):
                                            project=exp.project,
                                            cores=2))
 
-                time.sleep(5)
+                time.sleep(4)
 
         # Wait for jobs to finish
         job_wait(exp.job_id, exp.log_file)
@@ -950,7 +971,7 @@ def rsem(exp):
 
                 plot_model = f'rsem-plot-model {sample} {sample}.models.pdf'
 
-                command_list = [submission_prepend(module_list['python', 'share-rpms65']),
+                command_list = [submission_prepend(module_list=['python', 'share-rpms65']),
                                 align,
                                 plot_model
                                 ]
@@ -989,6 +1010,7 @@ def rsem(exp):
                                      log_file=exp.log_file,
                                      stranded=exp.stranded))
 
+    # Remove extra large files.
     remove_files = ['genome.bam', 'transcript.bam', 'wig']
     for number, sample in exp.samples.items():
         for file in remove_files:
@@ -1049,7 +1071,7 @@ def kallisto(exp):
 
                 output(f'Aligning {sample} using Kallisto.\n', exp.log_file)
 
-                command_list = [submission_prepend(align, module_list['python', 'perl'])]
+                command_list = [submission_prepend(align, module_list=['python', 'perl'])]
 
                 exp.job_id.append(send_job(command_list=command_list,
                                            job_name=f'{sample}_Kallisto',
@@ -1330,6 +1352,8 @@ def RUV(RUV_data, test_type, design, reduced, colData, norm_type, log, ERCC_coun
 
 def quartile_norm(norm_type, count_matrix, colData, design, reduced, log, comparison, plot_dir, lfcshrink, test_type, test_condition):
     '''
+    Implements three other custom normalization methods.
+
     type = 'median','upper','full'
 
     '''
@@ -1430,6 +1454,7 @@ def DESeq2(exp):
     out_dir = f'{exp.scratch}DESeq2_results/'
     os.makedirs(out_dir, exist_ok=True)
 
+    # GC normalization if requested.
     if exp.gc_norm:
         output('Using GC normalized counts for differential expression.\n', exp.log_file)
         count_matrix = exp.gc_count_matrix[list(exp.samples.values())]
@@ -1439,7 +1464,10 @@ def DESeq2(exp):
 
     dds = {}
 
+    #Comparison Generator
     comparison_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
+    
+    #Run differential comaprisons
     for comparison, designs in comparison_gen:
         output(f'Beginning {comparison}: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
         colData = designs['colData']
@@ -1449,6 +1477,7 @@ def DESeq2(exp):
         # filtering for genes with more than 1 count in two samples
         data = round(data[data[data > 1].apply(lambda x: len(x.dropna()) > 1, axis=1)])
 
+        # perform ERCC normalization with RUVseq if requested.  Based on removal of unwanted variance.
         if exp.norm.lower() in ['ercc', 'ercc_mixed']:
             output('Determining ERCC scaling vs Sample scaling using median of ratios of counts for rough comparison.  This may point out potentially problematic samples.\n', exp.log_file)
 
@@ -1464,6 +1493,8 @@ def DESeq2(exp):
             sizeFactors = ro.r("sizeFactors")
 
             # compare size factors from DESeq2 and ERCC for inconsistencies
+            # This is a sanity check and only identifies samples where ERCC spike in and DEseq2 size factors are more than 10% different.
+            # No extra normalization step is performed, and ERCC normalization proceeds regardless.
             ERCC_vector = pandas2ri.ri2py_vector(sizeFactors(ERCC_size))
             deseq2_vector = pandas2ri.ri2py_vector(sizeFactors(deseq2_size))
             if len(ERCC_vector) == len(deseq2_vector):
@@ -1476,7 +1507,7 @@ def DESeq2(exp):
             else:
                 output(f'\nERCC and deseq2 column lengths are different for {comparison}', exp.log_file)
 
-        # Differential Expression
+        # Differential Expression: DESeq2 defualt median-ratios
         if exp.norm.lower() == 'median-ratios':
             output('Using DESeq2 standard normalization of scaling by median of the ratios of observed counts.', exp.log_file)
             output(f'Performing {designs["Test_type"]} test for differential expression for {comparison}\n', exp.log_file)
@@ -1488,13 +1519,14 @@ def DESeq2(exp):
 
             dds[comparison] = deseq.DESeq(dds[comparison])
 
+            # LRT test handling
             if designs['Test_type'] == 'lrt':
                 reduced = ro.Formula(designs['reduced'])
                 dds[comparison] = deseq.DESeq(dds[comparison], test='LRT', reduced=reduced)
 
             output(f'{comparison} results type: ', exp.log_file)
 
-            # get results
+            # get results of DESeq2
             exp.de_results[f'DE2_{comparison}'] = pandas2ri.ri2py(as_df(deseq.results(dds[comparison], contrast=as_cv([f"{designs['design'].split(' ')[-1].split('~')[-1]}", 'yes', 'no']))))
             exp.de_results[f'DE2_{comparison}'].index = data.index
 
@@ -1510,6 +1542,7 @@ def DESeq2(exp):
             exp.de_results[f'{comparison}_log2_normCounts'].columns = data.columns
             exp.de_results[f'{comparison}_log2_normCounts'].index = data.index
 
+        # ERCC normalization if all samples have the same mix
         elif exp.norm.lower() == 'ercc':
             exp.de_results[f'DE2_{comparison}'], \
                 exp.de_results[f'shrunkenLFC_{comparison}'], \
@@ -1528,6 +1561,7 @@ def DESeq2(exp):
                                                                       lfcshrink=exp.lfcshrink
                                                                       )
 
+        # ERCC normalization if mulitple mixes are used.  Will use only the subset of sequences common to both mixes.
         elif exp.norm.lower() == 'ercc_mixed':
             full_counts = exp.spike_counts[designs['all_samples']]
             mix = pd.read_csv(exp.genome_indicies['ERCC_Mix'], header=0, index_col=1, sep="\t")
@@ -1549,6 +1583,7 @@ def DESeq2(exp):
                                                                       lfcshrink=exp.lfcshrink
                                                                       )
 
+        # Empirical normlization uses a set of empirically unchanging genes between samples as internal controls for removing unwanted variance.
         elif exp.norm.lower() == 'empirical':
             exp.de_results[f'DE2_{comparison}'], \
                 exp.de_results[f'shrunkenLFC_{comparison}'], \
@@ -1567,6 +1602,7 @@ def DESeq2(exp):
                                                                       lfcshrink=exp.lfcshrink
                                                                       )
 
+        # Implements other custom normalization methods.
         elif exp.norm.lower() in ['upper', 'median', 'full']:
             exp.de_results[f'DE2_{comparison}'], \
                 exp.de_results[f'shrunkenLFC_{comparison}'], \
@@ -1586,11 +1622,12 @@ def DESeq2(exp):
         else:
             raise ValueError('Can only use "median-ratios", "ercc", "ercc_mixed", "empirical", "upper", "median", or "full" for normalization of DESeq2.')
 
-        # DESeq2 results
+        # DESeq2 results processing to dataframe
         exp.de_results[f'DE2_{comparison}'].sort_values(by='padj', ascending=True, inplace=True)
         exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].index
         exp.de_results[f'DE2_{comparison}']['gene_name'] = exp.de_results[f'DE2_{comparison}'].gene_name.apply(lambda x: x.split("_")[-1])
         exp.de_results[f'DE2_{comparison}'].to_excel(f'{out_dir}{comparison}-DESeq2-results.xlsx')
+        
         # Shrunken LFC using apeglm or ashr method
         if exp.lfcshrink:
             exp.de_results[f'shrunkenLFC_{comparison}'].sort_values(by='log2FoldChange', ascending=False, inplace=True)
@@ -1601,7 +1638,7 @@ def DESeq2(exp):
         # Normlized counts
         exp.de_results[f'{comparison}_log2_normCounts'].to_excel(f'{out_dir}{comparison}_log2_normCounts.xlsx')
 
-    # blind rlog count matrix for all samples.
+    # sample blind rlog count matrix for all samples.
     colData = pd.DataFrame(index=count_matrix.columns, data={'condition': ['A'] * exp.sample_number})
     design = ro.Formula("~1")
 
@@ -1614,7 +1651,7 @@ def DESeq2(exp):
     exp.de_results['blind_rlog']['gene_name'] = exp.de_results['blind_rlog'].gene_name.apply(lambda x: x.split("_")[-1])
     exp.de_results['blind_rlog'].to_excel(f'{out_dir}ALL-samples-blind-rlog-counts.xlsx')
 
-    # vst
+    # sample blind variance stablized transformed counts.
     exp.de_results['blind_vst'] = pandas2ri.ri2py_dataframe(assay(deseq.vst(dds_blind)))
     exp.de_results['blind_vst'].index = count_matrix.index
     exp.de_results['blind_vst'].columns = count_matrix.columns
@@ -1622,24 +1659,7 @@ def DESeq2(exp):
     exp.de_results['blind_vst']['gene_name'] = exp.de_results['blind_vst'].gene_name.apply(lambda x: x.split("_")[-1])
     exp.de_results['blind_vst'].to_excel(f'{out_dir}ALL-samples-blind-variance-stabilized-log2-counts.xlsx')
 
-    '''
-    dds_complete = deseq.DESeqDataSetFromMatrix(countData=count_matrix.values,
-                                                colData=exp.designs['complete']['colData'],
-                                                design=ro.Formula(exp.designs['complete']['design'])
-                                                )
-
-    exp.de_results['complete_rlog'] = pandas2ri.ri2py_dataframe(assay(deseq.rlog(dds_complete)))
-    exp.de_results['complete_rlog'].index = count_matrix.index
-    exp.de_results['complete_rlog'].columns = count_matrix.columns
-    exp.de_results['complete_rlog']['gene_name'] = exp.de_results['complete_rlog'].index
-    exp.de_results['complete_rlog']['gene_name'] = exp.de_results['complete_rlog'].gene_name.apply(lambda x: x.split("_")[1])
-    exp.de_results['complete_rlog'].to_csv('{}ALL-samples-complete-design-rlog-counts.txt'.format(out_dir),
-                                           header=True,
-                                           index=True,
-                                           sep="\t"
-                                           )
-    '''
-
+    # Extract ERCC adjusted counts
     if exp.norm.lower() == 'ercc':
         exp.de_results['all_ERCC_normCounts'] = RUV(RUV_data=count_matrix,
                                                     test_type='',
@@ -2261,7 +2281,7 @@ def GSEA(exp):
                 set_dir = f'{out_compare}/{name}'
                 os.makedirs(set_dir, exist_ok=True)
 
-                command_list = [submission_prepend(module_list=['python','java','perl','share-rpms65']),
+                command_list = [submission_prepend(module_list=['python', 'java', 'perl', 'share-rpms65']),
                                 f'java -cp {exp.genome_indicies["GSEA_jar"]} -Xmx2048m xtools.gsea.GseaPreranked -gmx {gset} -norm meandiv -nperm 1000 -rnk "{rnk}" -scoring_scheme weighted -rpt_label {comparison}_{name}_wald -create_svgs false -make_sets true -plot_top_x 20 -rnd_seed timestamp -set_max 1000 -set_min 10 -zip_report false -out {name} -gui false'
                                 ]
 
@@ -2352,7 +2372,8 @@ def plot_venn2(Series, overlap_name, folder, background=None):
         circle.set_linewidth(3)
 
     if background:
-        pvalue = stats.hypergeom.sf(Series.iloc[2], background, Series.iloc[0], Series.iloc[1])
+        # Hypergeometric test for overlap significance if background is known.
+        pvalue = stats.hypergeom.sf(Series.iloc[2] - 1, background, Series.iloc[0] + Series.iloc[2], Series.iloc[1] + Series.iloc[2])
         plt.text(0, 0, f'p-value = {pvalue:.03g}', fontsize=10, transform=c[1].axes.transAxes)
 
     plt.title(f'{overlap_name.replace("_", " ")} Overlaps')
@@ -2647,6 +2668,9 @@ def finish(exp):
 
 
 def validated_run(task, func, exp):
+    '''
+    Catch error during pipeline and pickle state.
+    '''
     try:
         if task in exp.tasks_complete:
             output(f'Skipping {task}...', exp.log_file)
@@ -2662,27 +2686,30 @@ def validated_run(task, func, exp):
 
 
 def pipeline(experimental_file):
-        exp = parse_yaml(experimental_file)
-        exp = validated_run('Stage', stage, exp)
-        exp = validated_run('Fastq_screen', fastq_screen, exp)
-        exp = validated_run('Trim', trim, exp)
-        exp = validated_run('FastQC', fastqc, exp)
-        exp = validated_run('Spike', spike, exp)
-        exp = validated_run('STAR', star, exp)
-        exp = validated_run('RSEM', rsem, exp)
-        exp = validated_run('Kallisto', kallisto, exp)
-        exp = validated_run('GC', GC_normalization, exp)
-        exp = validated_run('DESeq2', DESeq2, exp)
-        exp = validated_run('Sleuth', Sleuth, exp)
-        exp = validated_run('PCA', Principal_Component_Analysis, exp)
-        exp = validated_run('Sigs', sigs, exp)
-        exp = validated_run('Heatmaps', clustermap, exp)
-        exp = validated_run('GO_enrich', GO_enrich, exp)
-        exp = validated_run('GSEA', GSEA, exp)
-        exp = validated_run('Overlaps', overlaps, exp)
-        # exp =validated_run('decomp',decomposition,exp)
-        exp = validated_run('MultiQC', final_qc, exp)
-        exp = validated_run('Finished', finish, exp)
+    '''
+    Main pipeline order
+    '''
+    exp = parse_yaml(experimental_file)
+    exp = validated_run('Stage', stage, exp)
+    exp = validated_run('Fastq_screen', fastq_screen, exp)
+    exp = validated_run('Trim', trim, exp)
+    exp = validated_run('FastQC', fastqc, exp)
+    exp = validated_run('Spike', spike, exp)
+    exp = validated_run('STAR', star, exp)
+    exp = validated_run('RSEM', rsem, exp)
+    exp = validated_run('Kallisto', kallisto, exp)
+    exp = validated_run('GC', GC_normalization, exp)
+    exp = validated_run('DESeq2', DESeq2, exp)
+    exp = validated_run('Sleuth', Sleuth, exp)
+    exp = validated_run('PCA', Principal_Component_Analysis, exp)
+    exp = validated_run('Sigs', sigs, exp)
+    exp = validated_run('Heatmaps', clustermap, exp)
+    exp = validated_run('GO_enrich', GO_enrich, exp)
+    exp = validated_run('GSEA', GSEA, exp)
+    exp = validated_run('Overlaps', overlaps, exp)
+    # exp =validated_run('decomp',decomposition,exp)
+    exp = validated_run('MultiQC', final_qc, exp)
+    exp = validated_run('Finished', finish, exp)
 
 
 if run_main:
@@ -2690,27 +2717,24 @@ if run_main:
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--experimental_file', '-f', required=True, help='experimental yaml file', type=str)
-    parser.add_argument('--notebook', '-n', dest='notebook', help='run as jupyter notebook', action='store_true')
-    parser.add_argument('--no-notebook', dest='notebook', help='run as python script', action='store_false')
     parser.add_argument('--template_notebook', '-t', required=False, help='location of template notebook', type=str)
     parser.add_argument('--out_notebook', '-o', required=False, help='name of output notebook (without .ipynb)', type=str)
     parser.add_argument('--submit', '-s', required=False, help='true will resubmit with conda initialization', action='store_true')
     parser.add_argument('--project', '-p', required=False, help='LSF project name for submission', type=str)
-    parser.set_defaults(notebook=True, submit=False)
+    parser.set_defaults(submit=False)
     args = parser.parse_args()
 
+    # initialize conda for resubmission and save submission script
     if args.submit:
         cmd = f'python RNAseq.py -f {args.experimental_file}'
-        if not args.notebook:
-            cmd += ' --no-notebook'
-        else:
+        if args.template_notebook:
             cmd += f' -t {args.template_notebook}'
             if args.out_notebook:
                 cmd += f' -o {args.out_notebook}'
 
         job_name = args.experimental_file.split('.')[0]
 
-        send_job(command_list=[submission_prepend(cmd, module_list=['python','share-rpms65'])],
+        send_job(command_list=[submission_prepend(cmd, module_list=['python', 'share-rpms65'])],
                  job_name=job_name,
                  job_log_folder=f'{os.getcwd()}/',
                  q='general',
@@ -2720,8 +2744,8 @@ if run_main:
                  cores=1,
                  submit=True)
 
-    elif args.notebook:
-        if (os.path.isfile(args.template_notebook) is False) or (args.template_notebook is False):
+    elif args.template_notebook:
+        if os.path.isfile(args.template_notebook) is False:
             raise IOError(f'Location of template notebook not found. Use -t option.')
         else:
             out_notebook = f'{args.out_notebook}.ipynb' if args.out_notebook else args.experimental_file.replace('yml', 'ipynb')
