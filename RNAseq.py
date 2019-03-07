@@ -52,6 +52,7 @@ __author__ = 'Daniel L. Karl'
 __license__ = 'MIT'
 __version__ = '0.8'
 
+
 class Experiment:
     '''
     Experiment object for pipeline
@@ -2094,7 +2095,7 @@ def clustermap(exp):
     return exp
 
 
-def enrichr(gene_list, description, out_dir):
+def enrichr(gene_list, description, out_dir, log_file):
     '''
     Perform GO enrichment and KEGG enrichment Analysis using Enrichr: http://amp.pharm.mssm.edu/Enrichr/
     '''
@@ -2102,8 +2103,11 @@ def enrichr(gene_list, description, out_dir):
     gene_sets = ['KEGG_2016', 'GO_Biological_Process_2017b', 'OMIM_Disease', 'ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X']
 
     for gene_set in gene_sets:
-        gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
-        out_result(f'{out_dir}{gene_set}.{description}.enrichr.reports.png', f'Enrichr: {gene_set} for {description}')
+        try:
+            gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
+            out_result(f'{out_dir}{gene_set}.{description}.enrichr.reports.png', f'Enrichr: {gene_set} for {description}')
+        except:
+            output(f'Error in enrichr for {description} with {gene_set}. Skipping... \n', log_file)
 
     return
 
@@ -2125,7 +2129,7 @@ def GO_enrich(exp):
             else:
                 GO_out = f'{GO_dir}{comparison}/'
                 os.makedirs(GO_out, exist_ok=True)
-                enrichr(gene_list=list(sig), description=f'{comparison}_{name}', out_dir=GO_out)
+                enrichr(gene_list=list(sig), description=f'{comparison}_{name}', out_dir=GO_out, log_file=exp.log_file)
 
     exp.tasks_complete.append('GO_enrich')
     output(f'GO Enrichment analysis for DESeq2 differentially expressed genes complete: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
@@ -2198,10 +2202,12 @@ def gsea_barplot(out_dir, pos_file, neg_file, gmt_name, max_number=20):
     plt.close()
 
     pos_png = glob.glob(f'{out_dir}*/enplot*{top_pos}*.png')
-    out_result(pos_png[0], f'Top positive {gmt_name} GSEA')
+    if len(pos_png) > 0:
+        out_result(pos_png[0], f'Top positive {gmt_name} GSEA')
 
     neg_png = glob.glob(f'{out_dir}*/enplot*{top_neg}*.png')
-    out_result(neg_png[0], f'Top negative {gmt_name} GSEA')
+    if len(neg_png) > 0:
+        out_result(neg_png[0], f'Top negative {gmt_name} GSEA')
 
     return file
 
@@ -2428,7 +2434,7 @@ def overlaps(exp):
             output(f'Not performing GO enrichment for {name} overlaps since there are no overlapping genes.\n', exp.log_file)
         else:
             output(f'Performing GO enrichment for {name} overlaps: {datetime.now()} \n', exp.log_file)
-            enrichr(gene_list=list(sig), description=f'{name}_overlap', out_dir=sig_out)
+            enrichr(gene_list=list(sig), description=f'{name}_overlap', out_dir=sig_out, log_file=exp.log_file)
 
             with open(f'{sig_out}{name}.xls', 'w') as file:
                 for gene in list(sig):
