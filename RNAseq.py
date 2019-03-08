@@ -1940,15 +1940,18 @@ def volcano(results, sig_up, sig_down, name, out_dir):
     scatter = ax.scatter(results.log2FoldChange, results.logp, marker='o', color='gray', alpha=0.1, s=10, label='_nolegend_')
 
     sig_results = results[results.padj < 0.05]
-    scatter = ax.scatter(sig_results[sig_results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange,
-                         sig_results[sig_results.gene_name.apply(lambda x: x in sig_up)].logp,
-                         marker='o', alpha=0.3, color='firebrick', s=10, label='Genes UP'
-                         )
 
-    scatter = ax.scatter(sig_results[sig_results.gene_name.apply(lambda x: x in sig_down)].log2FoldChange,
-                         sig_results[sig_results.gene_name.apply(lambda x: x in sig_down)].logp,
-                         marker='o', alpha=0.3, color='steelblue', s=10, label='Genes DOWN'
-                         )
+    if len(sig_up) > 0:
+        scatter = ax.scatter(sig_results[sig_results.gene_name.apply(lambda x: x in sig_up)].log2FoldChange,
+                             sig_results[sig_results.gene_name.apply(lambda x: x in sig_up)].logp,
+                             marker='o', alpha=0.3, color='firebrick', s=10, label='Genes UP'
+                             )
+
+    if len(sig_down) > 0:
+        scatter = ax.scatter(sig_results[sig_results.gene_name.apply(lambda x: x in sig_down)].log2FoldChange,
+                             sig_results[sig_results.gene_name.apply(lambda x: x in sig_down)].logp,
+                             marker='o', alpha=0.3, color='steelblue', s=10, label='Genes DOWN'
+                             )
 
     ax.axes.set_xlabel('Fold Change (log$_2$)')
     ax.axes.set_ylabel('p-value (-log$_10$)')
