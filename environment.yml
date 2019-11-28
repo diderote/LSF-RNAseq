@@ -18,6 +18,7 @@ dependencies:
 - bioconductor-rtracklayer=1.38.0
 - bioconductor-ruvseq=1.12.0
 - bioconductor-s4vectors=0.16.0
+- bioconductor-genomeinfodbdata=1.0.0
 - bowtie2=2.3.3.1
 - cutadapt=1.15
 - deeptools=3.1.1
@@ -37,7 +38,6 @@ dependencies:
 - pandas=0.21.1
 - papermill=0.14.2
 - pypdf2
-- python=3.6.3
 - pyyaml=3.12
 - r-ashr=2.0.5
 - r-base=3.4.1
@@ -54,4 +54,3 @@ dependencies:
 - scikit-learn=0.19.1
 - scipy=1.1.0
 - notebook
-- requests=2.18.4

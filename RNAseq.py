@@ -22,6 +22,7 @@ import pickle
 import random
 import time
 import reprlib
+import json
 from shutil import copy2, copytree, rmtree, move
 from datetime import datetime
 
@@ -30,6 +31,7 @@ if run_main:
     import matplotlib
     matplotlib.use('Agg')
 
+import requests
 import yaml
 from IPython.display import HTML, display, Image
 import seaborn as sns
@@ -45,7 +47,6 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
 from scipy import stats
 import PyPDF2
-import gseapy
 import papermill as pm
 
 __author__ = 'Daniel L. Karl'
@@ -841,7 +842,7 @@ def bam2bw(in_bam, out_bw, job_log_folder, sample, project, stranded, log_file):
                      job_name=f'{sample}_bw',
                      job_log_folder=job_log_folder,
                      q='general',
-                     mem='10000',
+                     mem='4000',
                      cores=2,
                      log_file=log_file,
                      project=project
@@ -1467,7 +1468,7 @@ def DESeq2(exp):
 
     #Comparison Generator
     comparison_gen = ((key, value) for key, value in exp.designs.items() if key != 'complete')
-    
+
     #Run differential comaprisons
     for comparison, designs in comparison_gen:
         output(f'Beginning {comparison}: {datetime.now():%Y-%m-%d %H:%M:%S}\n', exp.log_file)
@@ -2100,19 +2101,145 @@ def clustermap(exp):
 
 def enrichr(gene_list, description, out_dir, log_file):
     '''
-    Perform GO enrichment and KEGG enrichment Analysis using Enrichr: http://amp.pharm.mssm.edu/Enrichr/
+    Runs enrichment analysis through Enrichr and plots results
+    
+    Paramaters
+    ----------
+    dict_of_genelists: dictionary of description to genelists
+    dict_of_genelibraries: dictionary of enrichr gene libraries to test against
+        If None, will use default libraries
+    display: bool whether to display inline
+    q_thresh: qvalue threshold
+    plot_color: 
+    max_n:
+    
+    
     '''
-
-    gene_sets = ['KEGG_2016', 'GO_Biological_Process_2017b', 'OMIM_Disease', 'ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X']
-
+    
+    gene_sets = ['KEGG_2016', 'GO_Biological_Process_2018','ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X',
+                 'ChEA_2016','OMIM_Disease'
+                ]
+     
     for gene_set in gene_sets:
         try:
-            gseapy.enrichr(gene_list=gene_list, description=description, gene_sets=gene_set, outdir=out_dir, format='png')
-            out_result(f'{out_dir}{gene_set}.{description}.enrichr.reports.png', f'Enrichr: {gene_set} for {description}')
+            filename=f'{out_dir}{description}_{gene_set}.enrichr.txt'
+
+            post = post_genes(genes, description)
+            get = enrich(post['userListId'], filename, gene_library)
+            png = enrichr_barplot(filename=filename, gene_library=gene_sets, out_dir=out_dir, description=description)
+            out_result(png, f'Enrichr: {gene_set} for {description}')
         except:
             output(f'Error in enrichr for {description} with {gene_set}. Skipping... \n', log_file)
+      
+      
+def post_genes(gene_list, description):
+    '''
+    posts gene list to Enricr
+    
+    Returns
+    -------
+    dictionary: userListId, shortId
+    
+    '''
+    import json
+    import requests
+    
+    ENRICHR_URL = 'http://amp.pharm.mssm.edu/Enrichr/addList'
+    genes_str = '\n'.join(gene_list)
+    description = description
+    payload = {'list': (None, genes_str),
+               'description': (None, description)
+              }
 
-    return
+    response = requests.post(ENRICHR_URL, files=payload)
+    if not response.ok:
+        raise Exception('Error analyzing gene list')
+
+    return json.loads(response.text)
+
+
+def enrich(userListId, filename, gene_set_library):
+    '''
+    
+    Returns
+    -------
+    Text file of enrichment results
+    
+    '''
+    import requests
+    
+    ENRICHR_URL = 'http://amp.pharm.mssm.edu/Enrichr/export'
+    query_string = '?userListId=%s&filename=%s&backgroundType=%s'
+
+    url = ENRICHR_URL + query_string % (user_list_id, filename, gene_set_library)
+    response = requests.get(url, stream=True)
+
+    with open(filename, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=1024): 
+            if chunk:
+                f.write(chunk)
+
+                
+def enrichr_barplot(filename, gene_library, out_dir, description, max_n=20, 
+                    q_thresh=0.05, color='slategray'):
+    '''
+    Saves barplot from Enrichr results
+    
+    Paramaters
+    ----------
+    filename: enrichr response file
+    gene_library: gene set library to test
+    out_dir: result output folder
+    description: sample or gene set source name
+    max_n: max number of significant to display
+    q_thresh: qvalue threshold
+    color: plot color
+    
+    Return
+    ------
+    None
+    
+    '''
+    e_df = pd.read_csv(filename, header=0, sep="\t").sort_values(by=['Adjusted P-value']).head(max_n)
+    e_df['Clean_term'] = e_df.Term.apply(lambda x: x.split("_")[0])
+    e_df['log_q'] = -np.log10(e_df['Adjusted P-value'])
+
+    plt.clf()
+    sns.set(context='paper', font='Arial', font_scale=1.2, style='white', 
+            rc={'figure.dpi': 300, 'figure.figsize': (8, 6)}
+           )
+
+    fig, ax = plt.subplots()
+    fig.suptitle(f'{description} {gene_library.replace("_", " ")} enrichment\n(q<{q_thresh}, max {max_n})')
+
+    sig = e_df[e_df['Adjusted P-value'] <= q_thresh].copy() 
+
+    if len(sig) > 0:
+        g = sns.barplot(data=sig, x='log_q', y='Clean_term', color=color, ax=ax)
+        plt.xlabel('q-value (-log$_{10}$)')
+        plt.ylabel('Enrichment Term')
+        ymin, ymax = g.get_ylim()
+        g.vlines(x=-np.log10(q_thresh), ymin=ymin, ymax=ymax, colors='k', 
+                 linestyles='dashed', label=f'q = {q_thresh}')
+        g.legend()
+        sns.despine()
+    else:
+        ax.text(0.5, 0.5, 'No Significant Enrichments.',
+                horizontalalignment='center',
+                verticalalignment='center',
+                transform=ax.transAxes
+                )
+    try:
+        plt.tight_layout(h_pad=1, w_pad=1)
+    except ValueError:
+        pass
+
+    plt.subplots_adjust(top=0.88)
+    file = f'{out_dir}{description}_{gene_library}_enrichr.barplot.png'
+    fig.savefig(file, dpi=300)
+    plt.close()
+
+    return file
 
 
 def GO_enrich(exp):
@@ -2132,6 +2259,8 @@ def GO_enrich(exp):
             else:
                 GO_out = f'{GO_dir}{comparison}/'
                 os.makedirs(GO_out, exist_ok=True)
+                
+
                 enrichr(gene_list=list(sig), description=f'{comparison}_{name}', out_dir=GO_out, log_file=exp.log_file)
 
     exp.tasks_complete.append('GO_enrich')
