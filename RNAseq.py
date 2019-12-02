@@ -2097,39 +2097,6 @@ def clustermap(exp):
     output('Heatmaps for DESeq2 differentially expressed genes complete: {:%Y-%m-%d %H:%M:%S}\n'.format(datetime.now()), exp.log_file)
 
     return exp
-
-
-def enrichr(gene_list, description, out_dir, log_file):
-    '''
-    Runs enrichment analysis through Enrichr and plots results
-    
-    Paramaters
-    ----------
-    dict_of_genelists: dictionary of description to genelists
-    dict_of_genelibraries: dictionary of enrichr gene libraries to test against
-        If None, will use default libraries
-    display: bool whether to display inline
-    q_thresh: qvalue threshold
-    plot_color: 
-    max_n:
-    
-    
-    '''
-    
-    gene_sets = ['KEGG_2016', 'GO_Biological_Process_2018','ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X',
-                 'ChEA_2016','OMIM_Disease'
-                ]
-     
-    for gene_set in gene_sets:
-        try:
-            filename=f'{out_dir}{description}_{gene_set}.enrichr.txt'
-
-            post = post_genes(genes, description)
-            get = enrich(post['userListId'], filename, gene_library)
-            png = enrichr_barplot(filename=filename, gene_library=gene_sets, out_dir=out_dir, description=description)
-            out_result(png, f'Enrichr: {gene_set} for {description}')
-        except:
-            output(f'Error in enrichr for {description} with {gene_set}. Skipping... \n', log_file)
       
       
 def post_genes(gene_list, description):
@@ -2171,13 +2138,18 @@ def enrich(userListId, filename, gene_set_library):
     ENRICHR_URL = 'http://amp.pharm.mssm.edu/Enrichr/export'
     query_string = '?userListId=%s&filename=%s&backgroundType=%s'
 
-    url = ENRICHR_URL + query_string % (user_list_id, filename, gene_set_library)
+    url = ENRICHR_URL + query_string % (userListId, filename, gene_set_library)
     response = requests.get(url, stream=True)
 
     with open(filename, 'wb') as f:
         for chunk in response.iter_content(chunk_size=1024): 
             if chunk:
                 f.write(chunk)
+
+    if not response.ok:
+        raise Exception('Enrichr gene list enrichment error')
+
+    return response
 
                 
 def enrichr_barplot(filename, gene_library, out_dir, description, max_n=20, 
@@ -2241,6 +2213,38 @@ def enrichr_barplot(filename, gene_library, out_dir, description, max_n=20,
 
     return file
 
+
+def enrichr(gene_list, description, out_dir, log_file):
+    '''
+    Runs enrichment analysis through Enrichr and plots results
+    
+    Paramaters
+    ----------
+    dict_of_genelists: dictionary of description to genelists
+    dict_of_genelibraries: dictionary of enrichr gene libraries to test against
+        If None, will use default libraries
+    display: bool whether to display inline
+    q_thresh: qvalue threshold
+    plot_color: 
+    max_n:
+    
+    
+    '''
+    
+    gene_sets = ['KEGG_2016', 'GO_Biological_Process_2018','ENCODE_and_ChEA_Consensus_TFs_from_ChIP-X',
+                 'ChEA_2016','OMIM_Disease'
+                ]
+     
+    for gene_set in gene_sets:
+        try:
+            filename=f'{out_dir}{description}_{gene_set}.enrichr.txt'
+
+            post = post_genes(genes, description)
+            get = enrich(post['userListId'], filename, gene_library)
+            png = enrichr_barplot(filename=filename, gene_library=gene_sets, out_dir=out_dir, description=description)
+            out_result(png, f'Enrichr: {gene_set} for {description}')
+        except:
+            output(f'Error in enrichr for {description} with {gene_set}. Skipping... \n', log_file)
 
 def GO_enrich(exp):
     '''
