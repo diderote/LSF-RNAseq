@@ -2136,9 +2136,9 @@ def enrich(userListId, filename, gene_set_library):
     import requests
     
     ENRICHR_URL = 'http://amp.pharm.mssm.edu/Enrichr/export'
-    query_string = '?userListId=%s&filename=%s&backgroundType=%s'
+    query_string = '?userListId=%s&backgroundType=%s'
 
-    url = ENRICHR_URL + query_string % (userListId, filename, gene_set_library)
+    url = ENRICHR_URL + query_string % (userListId, gene_set_library)
     response = requests.get(url, stream=True)
 
     with open(filename, 'wb') as f:
@@ -2239,9 +2239,9 @@ def enrichr(gene_list, description, out_dir, log_file):
         try:
             filename=f'{out_dir}{description}_{gene_set}.enrichr.txt'
 
-            post = post_genes(genes, description)
-            get = enrich(post['userListId'], filename, gene_library)
-            png = enrichr_barplot(filename=filename, gene_library=gene_sets, out_dir=out_dir, description=description)
+            post = post_genes(gene_list, description)
+            get = enrich(post['userListId'], filename, gene_set)
+            png = enrichr_barplot(filename=filename, gene_library=gene_set, out_dir=out_dir, description=description)
             out_result(png, f'Enrichr: {gene_set} for {description}')
         except:
             output(f'Error in enrichr for {description} with {gene_set}. Skipping... \n', log_file)
